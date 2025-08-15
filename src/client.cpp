@@ -1,16 +1,32 @@
-#include <iostream>
-#include <wchar.h>
-#include <unistd.h>
-#include <string.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
+#include "client.h"
 
 using namespace std;
 
-const int PORT = 12345;
-const int BUFFER_SIZE = 1024;
+wstring getHelpMsg() {
+    return L"Usage:\n  client IP PORT\n    Connect to the server at the specified IP address and port.\n  client --help\n    Show this help message.\n";
+}
 
-int main() {
+int main(int argc, char *argv[]) {
+    setlocale(LC_ALL, "");
+
+    int port = 0;
+    char* serverIP;
+
+    if (argc == 2) {
+        if (!strcmp(argv[1], "--help")) {
+            wcout << getHelpMsg() << endl;
+            return 0;
+        }
+    }
+    if (argc == 3) {
+        serverIP = argv[1];
+        port = atoi(argv[2]);
+    }
+    else {
+        wcout << getHelpMsg() << endl;
+        return 0;
+    }
+
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock == -1) {
         perror("Socket failed");
@@ -20,9 +36,9 @@ int main() {
     sockaddr_in server_addr;
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(PORT);
+    server_addr.sin_port = htons(port);
 
-    if (inet_pton(AF_INET, "127.0.0.1", &server_addr.sin_addr) <= 0) {
+    if (inet_pton(AF_INET, serverIP, &server_addr.sin_addr) <= 0) {
         perror("Socket failed");
         return -2;
     }
@@ -32,13 +48,17 @@ int main() {
         return -3;
     }
 
-    wstring message = L"Hello world from client";
-    send(sock, static_cast<const void*>(message.data()), message.size()*sizeof(wchar_t), 0);
-
+    wstring message = L"";
     wchar_t buffer[BUFFER_SIZE] = {0};
-    int bytes = recv(sock, buffer, BUFFER_SIZE*sizeof(wchar_t), 0);
-    if (bytes > 0) {
-        wcout << buffer << endl;
+
+    while(true) {
+        getline(wcin, message);
+
+        send(sock, static_cast<const void*>(message.data()), message.size()*(sizeof(wchar_t)+1), 0);
+
+        if (recv(sock, buffer, BUFFER_SIZE*sizeof(wchar_t), 0)) {
+            wcout << buffer << endl;
+        }
     }
 
     close(sock);

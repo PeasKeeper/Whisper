@@ -1,72 +1,32 @@
-#include <iostream>
-#include <wchar.h>
-#include <unistd.h>
-#include <string.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <ifaddrs.h>
+#include "server.h"
 
 using namespace std;
 
-const int PORT = 12345;
-const int BUFFER_SIZE = 1024;
-
-struct IPv4Addr { // struct is 4 bytes instead of 8 in a ptr, pass by value
-    unsigned char octet[4];
-};
-
-wostream& operator<<(wostream& os, const IPv4Addr ip) {
-    return os << static_cast<int>(ip.octet[0]) << "."
-              << static_cast<int>(ip.octet[1]) << "."
-              << static_cast<int>(ip.octet[2]) << "."
-              << static_cast<int>(ip.octet[3]);
+wstring getHelpMsg() {
+    return L"Usage: server [options]\n\nOptions:\n  --help        Display this help message and exit\n  -p <port>     Set the server port manually (default port is used if not specified)";
 }
 
-bool is_private_ip(const IPv4Addr ip) {
-    return (ip.octet[0] == 192 && ip.octet[1] == 168) ||
-           (ip.octet[0] == 10) ||
-           (ip.octet[0] == 172 && ip.octet[1] >= 16 && ip.octet[1] <= 31);
-}
+int main(int argc, char *argv[]) {
+    setlocale(LC_ALL, "");
 
-IPv4Addr getLocalIPv4() {
-    ifaddrs *ifAddrStruct = nullptr;
-    ifaddrs *ifa = nullptr;
+    int port = 3418;
 
-    IPv4Addr result{{0, 0, 0, 0}};
-
-    if (getifaddrs(&ifAddrStruct) == -1) {
-        perror("Failed to find local address");
-        return result;
-    }
-
-    for (ifa = ifAddrStruct; ifa != nullptr; ifa = ifa->ifa_next) {
-        if (!ifa->ifa_addr) {
-            continue;
+    if (argc == 2) {
+        if (!strcmp(argv[1], "--help")) {
+            wcout << getHelpMsg() << endl;
+            return 0;
         }
-
-        if (ifa->ifa_addr->sa_family == AF_INET) {
-            sockaddr_in *sa = (sockaddr_in *)ifa->ifa_addr;
-
-            IPv4Addr ipBytes;
-            memcpy(ipBytes.octet, &sa->sin_addr, 4);
-
-            if (ipBytes.octet[0] == 127) {
-                continue; // loopback
-            }
-
-            if (is_private_ip(ipBytes)) {
-                memcpy(result.octet, ipBytes.octet, 4);
-                break;
-            }
+    }
+    else if (argc == 3) {
+        if (!strcmp(argv[1], "-p")) {
+            port = atoi(argv[2]);
+        }
+        else {
+            wcout << getHelpMsg() << endl;
+            return 0;
         }
     }
 
-    freeifaddrs(ifAddrStruct);
-    return result;
-}
-
-
-int main() {
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd == -1) {
         perror("Socket failed");
@@ -77,7 +37,7 @@ int main() {
     memset(&address, 0, sizeof(address));
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(PORT);
+    address.sin_port = htons(port);
 
     if (bind(server_fd, (sockaddr*)&address, sizeof(address)) < 0) {
         perror("Bind failed");
@@ -91,7 +51,7 @@ int main() {
         return -3;
     }
 
-    wcout << L"Server up on " << getLocalIPv4() << L":" << PORT << endl;
+    wcout << L"Server up on " << getLocalIPv4() << L":" << port << endl;
 
     int client_fd = accept(server_fd, NULL, NULL);
     if (client_fd < 0) {
@@ -103,12 +63,12 @@ int main() {
     wcout << L"New user connected" << endl;
 
     wchar_t buffer[BUFFER_SIZE] = {0};
-    int bytes_received = recv(client_fd, buffer, BUFFER_SIZE*sizeof(wchar_t), 0); //TODO: consider windows compatibility 
-    if (bytes_received > 0) {
-        wcout << L"Client: " << buffer << endl;
-
-        wstring response = L"Hello world from server";
-        send(client_fd, static_cast<const void*>(response.data()), response.size()*sizeof(wchar_t), 0);
+    
+    while (true) {
+        if (recv(client_fd, buffer, BUFFER_SIZE*sizeof(wchar_t), 0)) { //TODO: consider windows compatibility 
+            wcout << L"Client: " << buffer << endl;
+            send(client_fd, static_cast<const void*>(buffer), BUFFER_SIZE*sizeof(wchar_t), 0);
+        }
     }
 
     close(client_fd);
