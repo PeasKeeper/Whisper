@@ -5,7 +5,6 @@ using namespace std;
 wstring getHelpMsg() {
     return L"Usage:\n  client IP PORT\n    Connect to the server at the specified IP address and port.\n  client --help\n    Show this help message.\n";
 }
-
 int main(int argc, char *argv[]) {
     setlocale(LC_ALL, "");
 
@@ -51,16 +50,23 @@ int main(int argc, char *argv[]) {
     wstring message = L"";
     wchar_t buffer[BUFFER_SIZE] = {0};
 
-    while(true) {
-        getline(wcin, message);
+    thread inputThread = thread([&]{
+        while(getline(wcin, message, L'\n')) {
+            if (message.size() > 0) {
+                send(sock, reinterpret_cast<const void*>(message.data()), (message.size()+1) * sizeof(wchar_t), 0);
+            }
+        }
+    });
 
-        send(sock, static_cast<const void*>(message.data()), message.size()*(sizeof(wchar_t)+1), 0);
-
+    while (true) {
         if (recv(sock, buffer, BUFFER_SIZE*sizeof(wchar_t), 0)) {
             wcout << buffer << endl;
         }
+        
     }
 
+    inputThread.join();
     close(sock);
+    
     return 0;
 }
