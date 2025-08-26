@@ -10,7 +10,7 @@ wstring getHelpMsg() {
 
 void getClientMessage (const int client_fd, set<int>* clients) {
 
-    wchar_t buffer[BUFFER_SIZE+1] = {0};
+    wchar_t buffer[BUFFER_SIZE] = {0};
 
     while (true) {
         if (recv(client_fd, buffer, BUFFER_SIZE*sizeof(wchar_t), 0)) { //TODO: consider windows compatibility 
@@ -102,14 +102,15 @@ int main(int argc, char *argv[]) {
         threads->push_back(move(t));
     }
 
-    
     for (auto client : *clients) {
         close(client);
     }
     close(server_fd);
+
     for (auto &thread : *threads) {
         thread.join();
     }
+    
     delete clients;
     delete threads;
 

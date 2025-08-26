@@ -5,6 +5,7 @@ using namespace std;
 wstring getHelpMsg() {
     return L"Usage:\n  client IP PORT\n    Connect to the server at the specified IP address and port.\n  client --help\n    Show this help message.\n";
 }
+
 int main(int argc, char *argv[]) {
     setlocale(LC_ALL, "");
 
@@ -66,7 +67,8 @@ int main(int argc, char *argv[]) {
     }
 
     inputThread.join();
-    close(sock);
     
+    close(sock);
+
     return 0;
 }

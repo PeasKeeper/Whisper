@@ -16,6 +16,6 @@ const int BUFFER_SIZE = 1024;
 
 std::wstring getHelpMsg();
 
-//void getClientMessage (const int client_fd, set<int>* clients);
+void getClientMessage (const int client_fd, std::set<int>* clients);
 
 #endif
