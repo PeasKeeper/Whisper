@@ -88,8 +88,8 @@ int main(int argc, char *argv[]) {
 
     wcout << L"Server up on " << getLocalIPv4() << L":" << port << endl;
 
-    set<int>* clients;
-    vector<thread>* threads;
+    set<int> clients;
+    vector<thread> threads;
 
     while (true) {
 
@@ -97,7 +97,7 @@ int main(int argc, char *argv[]) {
 
         unique_lock<mutex> lock(clientMutex);
         
-        auto setCheck = clients->insert(client_fd);
+        auto setCheck = clients.insert(client_fd);
 
         lock.unlock();
 
@@ -109,22 +109,19 @@ int main(int argc, char *argv[]) {
 
         wcout << L"New user connected" << endl;
         
-        thread t(getClientMessage, client_fd, clients);
-        threads->push_back(move(t));
+        thread t(getClientMessage, client_fd, &clients);
+        threads.push_back(move(t));
     }
 
 
-    for (auto &thread : *threads) {
+    for (auto &thread : threads) {
         thread.join();
     }
 
-    for (auto client : *clients) {
+    for (auto client : clients) {
         close(client);
     }
     close(server_fd);
-
-    delete threads;
-    delete clients;
 
     cout << L"Server shut down" << endl;
     return 0;
