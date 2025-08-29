@@ -1,21 +1,10 @@
-#ifndef SERVER_H
+#pragma once
 
 #include <iostream>
-#include <wchar.h>
-#include <unistd.h>
-#include <arpa/inet.h>
-#include <string.h>
-#include "IPv4Addr.h"
-#include <locale>
-#include <codecvt>
-#include <bits/stdc++.h>
 #include <set>
-#include <mutex>
 
 const int BUFFER_SIZE = 1024;
 
 std::wstring getHelpMsg();
 
-void getClientMessage (const int client_fd, std::set<int>* clients);
-
-#endif
+void getClientMessage (const int client_fd, const std::set<int>* clients);

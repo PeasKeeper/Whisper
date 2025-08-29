@@ -1,4 +1,13 @@
 #include "server.h"
+#include "IPv4Addr.h"
+#include <wchar.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <string.h>
+#include <locale>
+#include <codecvt>
+#include <bits/stdc++.h>
+#include <mutex>
 
 using namespace std;
 
@@ -8,18 +17,20 @@ wstring getHelpMsg() {
     return L"Usage: server [options]\n\nOptions:\n  --help        Display this help message and exit\n  -p <port>     Set the server port manually (default port is used if not specified)";
 }
 
-void getClientMessage (const int client_fd, set<int>* clients) {
+void getClientMessage (const int client_fd, const set<int>* clients) {
 
     wchar_t buffer[BUFFER_SIZE] = {0};
+    int bytes = 0;
 
     while (true) {
-        if (recv(client_fd, buffer, BUFFER_SIZE*sizeof(wchar_t), 0)) { //TODO: consider windows compatibility 
+        bytes = recv(client_fd, buffer, (BUFFER_SIZE - 1)*sizeof(wchar_t), 0);
+        if (bytes) { //TODO: consider windows compatibility 
 
             lock_guard<mutex> lock(clientMutex);
 
             for (auto client = clients->begin(); client != clients->end(); ++client) {
                 if (*client != client_fd) {
-                    send(*client, static_cast<const void*>(buffer), BUFFER_SIZE*sizeof(wchar_t), 0);
+                    send(*client, static_cast<const void*>(buffer), bytes + sizeof(wchar_t), 0);
                 }
             }
         }
@@ -77,8 +88,8 @@ int main(int argc, char *argv[]) {
 
     wcout << L"Server up on " << getLocalIPv4() << L":" << port << endl;
 
-    set<int>* clients = new set<int>;
-    vector<thread>* threads = new vector <thread>;
+    set<int>* clients;
+    vector<thread>* threads;
 
     while (true) {
 
@@ -102,17 +113,18 @@ int main(int argc, char *argv[]) {
         threads->push_back(move(t));
     }
 
+
+    for (auto &thread : *threads) {
+        thread.join();
+    }
+
     for (auto client : *clients) {
         close(client);
     }
     close(server_fd);
 
-    for (auto &thread : *threads) {
-        thread.join();
-    }
-    
-    delete clients;
     delete threads;
+    delete clients;
 
     cout << L"Server shut down" << endl;
     return 0;

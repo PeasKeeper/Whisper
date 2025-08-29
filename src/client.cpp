@@ -1,4 +1,13 @@
 #include "client.h"
+#include <wchar.h>
+#include <unistd.h>
+#include <string.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <locale>
+#include <codecvt>
+#include <bits/stdc++.h>
+#include <mutex>
 
 using namespace std;
 
@@ -60,7 +69,7 @@ int main(int argc, char *argv[]) {
     });
 
     while (true) {
-        if (recv(sock, buffer, BUFFER_SIZE*sizeof(wchar_t), 0)) {
+        if (recv(sock, buffer, (BUFFER_SIZE - 1)*sizeof(wchar_t), 0)) {
             wcout << buffer << endl;
         }
         

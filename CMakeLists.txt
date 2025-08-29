@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(simpleChat LANGUAGES CXX)
+project(Whisper LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -13,20 +13,18 @@ endif()
 
 if(BUILD_SERVER)
     add_executable(server
-        server.cpp
-        server.h
-        IPv4Addr.cpp
-        IPv4Addr.h
+        src/server.cpp
+        src/server.h
+        src/IPv4Addr.cpp
+        src/IPv4Addr.h
     )
     target_include_directories(server PRIVATE .)
 endif()
 
 if(BUILD_CLIENT)
     add_executable(client
-        client.cpp
-        client.h
-        IPv4Addr.cpp
-        IPv4Addr.h
+        src/client.cpp
+        src/client.h
     )
     target_include_directories(client PRIVATE .)
 endif()

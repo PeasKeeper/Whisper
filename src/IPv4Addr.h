@@ -1,4 +1,4 @@
-#ifndef IPV4ADDR_H
+#pragma once
 
 #include <iostream>
 
@@ -11,5 +11,3 @@ std::wostream& operator<<(std::wostream& os, const IPv4Addr ip);
 bool isPrivateIp(const IPv4Addr ip);
 
 IPv4Addr getLocalIPv4();
-
-#endif
