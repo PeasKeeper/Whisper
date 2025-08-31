@@ -8,8 +8,22 @@
 #include <codecvt>
 #include <bits/stdc++.h>
 #include <mutex>
+#include <csignal> 
+#include <atomic>
 
 using namespace std;
+
+static atomic<bool> running(true);
+
+static int sock = -1;
+
+void stopSignalHandler(int signum) {
+    
+    running = false; 
+    close(sock);
+    terminate();
+
+}
 
 wstring getHelpMsg() {
     return L"Usage:\n  client IP PORT\n    Connect to the server at the specified IP address and port.\n  client --help\n    Show this help message.\n";
@@ -36,7 +50,7 @@ int main(int argc, char *argv[]) {
         return 0;
     }
 
-    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock == -1) {
         perror("Socket failed");
         return -1;
@@ -61,23 +75,33 @@ int main(int argc, char *argv[]) {
     wchar_t buffer[BUFFER_SIZE] = {0};
 
     thread inputThread = thread([&]{
-        while(getline(wcin, message, L'\n')) {
+        while(running) {
+            getline(wcin, message, L'\n');
             if (message.size() > 0) {
                 send(sock, reinterpret_cast<const void*>(message.data()), (message.size()+1) * sizeof(wchar_t), 0);
             }
         }
     });
 
-    while (true) {
-        if (recv(sock, buffer, (BUFFER_SIZE - 1)*sizeof(wchar_t), 0)) {
+    while (running) {
+        int bytes = recv(sock, buffer, (BUFFER_SIZE - 1)*sizeof(wchar_t), 0);
+
+        if (bytes > 0) {
             wcout << buffer << endl;
         }
-        
+
+        else if (!bytes){
+            wcout << L"\nServer shut down" << endl;
+            close(sock);
+            terminate();
+        }
+
+        else {
+            continue; // TODO: add error handling
+        }
     }
 
     inputThread.join();
-    
-    close(sock);
 
     return 0;
 }

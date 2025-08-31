@@ -6,9 +6,16 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(BUILD_SERVER "Build server" OFF)
 option(BUILD_CLIENT "Build client" OFF)
+option(BUILD_ALL "Build all targets" OFF)
 
-if(NOT BUILD_SERVER AND NOT BUILD_CLIENT)
-    message(WARNING "No target selected for build.")
+if(NOT BUILD_SERVER AND NOT BUILD_CLIENT AND NOT BUILD_ALL)
+    message(STATUS "No build option selected — defaulting to BUILD_ALL=ON")
+    set(BUILD_ALL ON)
+endif()
+
+if(BUILD_ALL)
+    set(BUILD_SERVER ON)
+    set(BUILD_CLIENT ON)
 endif()
 
 if(BUILD_SERVER)
@@ -17,6 +24,7 @@ if(BUILD_SERVER)
         src/server.h
         src/IPv4Addr.cpp
         src/IPv4Addr.h
+	src/ClientData.h
     )
     target_include_directories(server PRIVATE .)
 endif()
