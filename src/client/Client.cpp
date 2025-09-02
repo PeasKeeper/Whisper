@@ -1,55 +1,22 @@
-#include "client.h"
+#include "Client.h"
+
 #include <wchar.h>
-#include <unistd.h>
 #include <string.h>
+#include <unistd.h>
+#include <thread>
 #include <arpa/inet.h>
 #include <netinet/in.h>
-#include <locale>
-#include <codecvt>
-#include <bits/stdc++.h>
-#include <mutex>
-#include <csignal> 
-#include <atomic>
 
 using namespace std;
 
-static atomic<bool> running(true);
-
-static int sock = -1;
-
-void stopSignalHandler(int signum) {
-    
-    running = false; 
-    close(sock);
-    terminate();
-
+Client::Client () {
+    running = true;
+    sock = -1;
 }
 
-wstring getHelpMsg() {
-    return L"Usage:\n  client IP PORT\n    Connect to the server at the specified IP address and port.\n  client --help\n    Show this help message.\n";
-}
+Client::~Client () {}
 
-int main(int argc, char *argv[]) {
-    setlocale(LC_ALL, "");
-
-    int port = 0;
-    char* serverIP;
-
-    if (argc == 2) {
-        if (!strcmp(argv[1], "--help")) {
-            wcout << getHelpMsg() << endl;
-            return 0;
-        }
-    }
-    if (argc == 3) {
-        serverIP = argv[1];
-        port = atoi(argv[2]);
-    }
-    else {
-        wcout << getHelpMsg() << endl;
-        return 0;
-    }
-
+int Client::start (char* serverIP, int port) {
     sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock == -1) {
         perror("Socket failed");
@@ -92,8 +59,7 @@ int main(int argc, char *argv[]) {
 
         else if (!bytes){
             wcout << L"\nServer shut down" << endl;
-            close(sock);
-            terminate();
+            stop();
         }
 
         else {
@@ -102,6 +68,11 @@ int main(int argc, char *argv[]) {
     }
 
     inputThread.join();
-
+    
     return 0;
+}
+
+void Client::stop() {
+    running = false; 
+    close(sock);
 }

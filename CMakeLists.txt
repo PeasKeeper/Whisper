@@ -20,19 +20,21 @@ endif()
 
 if(BUILD_SERVER)
     add_executable(server
-        src/server.cpp
-        src/server.h
-        src/IPv4Addr.cpp
-        src/IPv4Addr.h
-	src/ClientData.h
+	src/server/main.cpp
+        src/server/Server.cpp
+        src/server/Server.h
+        src/server/IPv4Addr.cpp
+        src/server/IPv4Addr.h
+	src/server/ClientData.h
     )
     target_include_directories(server PRIVATE .)
 endif()
 
 if(BUILD_CLIENT)
     add_executable(client
-        src/client.cpp
-        src/client.h
+	src/client/main.cpp
+        src/client/Client.cpp
+        src/client/Client.h
     )
     target_include_directories(client PRIVATE .)
 endif()
