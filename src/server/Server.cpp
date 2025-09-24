@@ -13,8 +13,6 @@ Server::Server () {
     serverFd = -1;
 }
 
-Server::~Server () {}
-
 int Server::start (int port) {
     serverFd = socket(AF_INET, SOCK_STREAM, 0);
     if (serverFd == -1) {
@@ -43,15 +41,17 @@ int Server::start (int port) {
     wcout << L"Server up on " << getLocalIPv4() << L":" << port << endl;
 
     while (running) {
-        int clientFd = accept(serverFd, NULL, NULL);
+        closeClients(clientsToClose, clientCloseMutex);
 
-        if (clientFd < 0 && running) {
-            perror("Accept failed");
-            continue;
-        }
+        int clientFd = accept(serverFd, NULL, NULL);
 
         if (!running) {
             break;
+        }
+
+        if (clientFd < 0) {
+            perror("Accept failed");
+            continue;
         }
 
         unique_lock<mutex> lock(activeClientMutex);
@@ -63,24 +63,24 @@ int Server::start (int port) {
         wcout << L"New user connected" << endl;
         
         thread t(&Server::handleClient, this, clientFd);
-        emplaceData.first->second.clientThread = (move(t));
+        emplaceData.first->second.clientThread = move(t);
 
-        closeClients(clientsToClose, clientCloseMutex);
     }
     closeClients(activeClients, activeClientMutex);
-    closeClients(clientsToClose, clientCloseMutex);
 
     return 0;
 }
 
 void Server::stop () {
     running = false;
-    close(serverFd);
+    if (serverFd >= 0) {
+        close(serverFd);
+    }
     wcout << L"\nServer shut down" << endl;
 }
 
 void Server::closeClients (unordered_map<int, ClientData>& clients, mutex& clientMutex) {
-    unique_lock<mutex> lock(clientMutex);
+    lock_guard<mutex> lock(clientMutex);
 
     if (!clients.empty()) {
         for (auto &client : clients) {
@@ -97,23 +97,29 @@ void Server::closeClients (unordered_map<int, ClientData>& clients, mutex& clien
 
 void Server::handleClient (const int clientFd) {
 
-    wchar_t buffer[BUFFER_SIZE] = {0};
+    array<wchar_t, BUFFER_SIZE> buffer;
     int bytes = 0;
 
     while (true) {
-        bytes = recv(clientFd, buffer, (BUFFER_SIZE - 1)*sizeof(wchar_t), 0);
+        bytes = recv(clientFd, buffer.data(), buffer.size(), 0);
 
         if (!running) {
             break;
         }
 
-        if (bytes > 0) { //TODO: consider windows compatibility 
+        if (bytes > 0) {
 
             lock_guard<mutex> lock(activeClientMutex);
 
+            if (activeClients[clientFd].nickname == L"") {
+                activeClients[clientFd].nickname = buffer.data();
+                continue;
+            }
+
             for (auto &client : activeClients) {
                 if (client.first != clientFd) {
-                    send(client.first, static_cast<const void*>(buffer), bytes + sizeof(wchar_t), 0);
+                    prependNickname(buffer, client.second.nickname);
+                    send(client.first, static_cast<const void*>(buffer.data()), wcslen(buffer.data())*sizeof(wchar_t), 0);
                 }
             }
         }
@@ -129,4 +135,18 @@ void Server::handleClient (const int clientFd) {
         }
     }
     return;
+}
+
+void Server::prependNickname (array<wchar_t, BUFFER_SIZE>& buffer, const wstring& nickname) {
+
+    /*if (buffer.size() + nickname.size() > BUFFER_SIZE) { TODO: think about messages longer than 1024
+        return false;
+    }*/
+
+    wstring tempNick = nickname + L": ";
+    int msgLen = wcslen(buffer.data());
+
+    wmemmove(buffer.data() + tempNick.size(), buffer.data(), msgLen + 1);
+
+    wmemcpy(buffer.data(), tempNick.data(), tempNick.size());
 }

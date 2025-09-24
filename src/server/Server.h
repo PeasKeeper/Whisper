@@ -6,6 +6,7 @@
 #include <atomic>
 #include <unordered_map>
 #include <mutex>
+#include <array>
 
 constexpr int BUFFER_SIZE = 1024;
 
@@ -23,10 +24,12 @@ class Server {
 
         void handleClient (const int clientFd);
         void closeClients (std::unordered_map<int, ClientData>& clients, std::mutex& clientMutex);
+        void prependNickname (std::array<wchar_t, BUFFER_SIZE>& buffer, const std::wstring& nickname); // not making buffer a class field bc 
+                                                                                                       // it shouldn't be accesible from everywhere
 
     public:
         Server ();
-        ~Server ();
+        ~Server () {};
         int start (int port);
         void stop ();
 };

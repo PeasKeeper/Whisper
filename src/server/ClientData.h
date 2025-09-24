@@ -1,7 +1,9 @@
 #pragma once
 
 #include <thread>
+#include <string>
 
 struct ClientData {
-    std::thread clientThread; // Later will store more data
+    std::thread clientThread;
+    std::wstring nickname = L"";
 };

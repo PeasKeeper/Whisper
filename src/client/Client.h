@@ -13,7 +13,7 @@ class Client {
 
     public:
         Client ();
-        ~Client ();
-        int start (char* serverIP, int port);
+        ~Client () {};
+        int start (char* serverIP, int port, std::wstring nickname);
         void stop ();
 };

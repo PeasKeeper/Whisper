@@ -9,7 +9,9 @@ using namespace std;
 static Server* serverInstance = nullptr; // ptr for signal handling, can not be not global
 
 void stopSignalHandler (int signum) {
-    serverInstance->stop();
+    if (serverInstance != nullptr) {
+        serverInstance->stop();
+    }
 }
 
 wstring getHelpMsg () {

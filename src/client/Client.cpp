@@ -14,9 +14,7 @@ Client::Client () {
     sock = -1;
 }
 
-Client::~Client () {}
-
-int Client::start (char* serverIP, int port) {
+int Client::start (char* serverIP, int port, wstring nickname) {
     sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock == -1) {
         perror("Socket failed");
@@ -38,12 +36,17 @@ int Client::start (char* serverIP, int port) {
         return -3;
     }
 
+    send(sock, reinterpret_cast<const void*>(nickname.data()), (nickname.size()+1) * sizeof(wchar_t), 0);
+
     wstring message = L"";
     wchar_t buffer[BUFFER_SIZE] = {0};
 
     thread inputThread = thread([&]{
         while(running) {
             getline(wcin, message, L'\n');
+            if (wcin.eof()) {
+                break;
+            }
             if (message.size() > 0) {
                 send(sock, reinterpret_cast<const void*>(message.data()), (message.size()+1) * sizeof(wchar_t), 0);
             }
@@ -74,5 +77,9 @@ int Client::start (char* serverIP, int port) {
 
 void Client::stop() {
     running = false; 
-    close(sock);
+    if (sock >= 0) {
+        close(sock);
+    }
+    wcout << L"\nPress enter to exit the application..." << endl;
+    //close(STDIN_FILENO); //closing wcin to join input thread
 }
