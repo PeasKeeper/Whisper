@@ -24,7 +24,7 @@ class Server {
 
         void handleClient (const int clientFd);
         void closeClients (std::unordered_map<int, ClientData>& clients, std::mutex& clientMutex);
-        void prependNickname (std::array<wchar_t, BUFFER_SIZE>& buffer, const std::wstring& nickname); // not making buffer a class field bc 
+        bool prependNickname (std::array<wchar_t, BUFFER_SIZE>& buffer, const std::wstring& nickname); // not making buffer a class field bc 
                                                                                                        // it shouldn't be accesible from everywhere
 
     public:

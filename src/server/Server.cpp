@@ -124,7 +124,11 @@ void Server::handleClient (const int clientFd) {
                 continue;
             }
 
-            prependNickname(buffer, activeClients[clientFd].nickname);
+            if (!prependNickname(buffer, activeClients[clientFd].nickname)) {
+                // ignore for now
+                // TODO: add handling
+                continue;
+            }
             for (auto &client : activeClients) {
                 if (client.first != clientFd) {
                     send(client.first, static_cast<const void*>(buffer.data()), (wcslen(buffer.data())+1)*sizeof(wchar_t), 0);
@@ -145,16 +149,17 @@ void Server::handleClient (const int clientFd) {
     return;
 }
 
-void Server::prependNickname (array<wchar_t, BUFFER_SIZE>& buffer, const wstring& nickname) {
+bool Server::prependNickname (array<wchar_t, BUFFER_SIZE>& buffer, const wstring& nickname) {
 
-    /*if (buffer.size() + nickname.size() > BUFFER_SIZE) { TODO: think about messages longer than 1024
+    if (wcslen(buffer.data()) + nickname.size() >= BUFFER_SIZE) {
         return false;
-    }*/
+    }
 
     wstring tempNick = nickname + L": ";
-    int msgLen = wcslen(buffer.data());
 
-    wmemmove(buffer.data() + tempNick.size(), buffer.data(), msgLen + 1);
+    wstring res = tempNick + buffer.data();
+    copy(res.begin(), res.end(), buffer.begin());
+    buffer[res.size()] = L'\0';
 
-    wmemcpy(buffer.data(), tempNick.data(), tempNick.size());
+    return true;
 }
