@@ -73,6 +73,7 @@ int Server::start (int port) {
         emplaceData.first->second.clientThread = move(t);
 
     }
+    closeClients(clientsToClose, clientCloseMutex);
     closeClients(activeClients, activeClientMutex);
 
     return 0;
