@@ -26,6 +26,13 @@ int Server::start (int port) {
     address.sin_addr.s_addr = INADDR_ANY;
     address.sin_port = htons(port);
 
+    int opt = 1;
+    if (setsockopt(serverFd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+        perror("setsockopt failed");
+        close(serverFd);
+        return -4;
+    }
+
     if (bind(serverFd, (sockaddr*)&address, sizeof(address)) < 0) {
         perror("Bind failed");
         close(serverFd);
