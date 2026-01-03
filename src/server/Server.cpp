@@ -116,9 +116,9 @@ void Server::handleClient (const int clientFd) {
                 continue;
             }
 
+            prependNickname(buffer, activeClients[clientFd].nickname);
             for (auto &client : activeClients) {
                 if (client.first != clientFd) {
-                    prependNickname(buffer, client.second.nickname);
                     send(client.first, static_cast<const void*>(buffer.data()), wcslen(buffer.data())*sizeof(wchar_t), 0);
                 }
             }
