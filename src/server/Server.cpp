@@ -101,7 +101,7 @@ void Server::handleClient (const int clientFd) {
     int bytes = 0;
 
     while (true) {
-        bytes = recv(clientFd, buffer.data(), buffer.size(), 0);
+        bytes = recv(clientFd, buffer.data(), (buffer.size()-1) * sizeof(wchar_t), 0);
 
         if (!running) {
             break;
@@ -119,7 +119,7 @@ void Server::handleClient (const int clientFd) {
             prependNickname(buffer, activeClients[clientFd].nickname);
             for (auto &client : activeClients) {
                 if (client.first != clientFd) {
-                    send(client.first, static_cast<const void*>(buffer.data()), wcslen(buffer.data())*sizeof(wchar_t), 0);
+                    send(client.first, static_cast<const void*>(buffer.data()), (wcslen(buffer.data())+1)*sizeof(wchar_t), 0);
                 }
             }
         }

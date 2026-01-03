@@ -54,7 +54,7 @@ int Client::start (char* serverIP, int port, wstring nickname) {
     });
 
     while (running) {
-        int bytes = recv(sock, buffer, (BUFFER_SIZE - 1)*sizeof(wchar_t), 0);
+        int bytes = recv(sock, buffer, (BUFFER_SIZE-1)*sizeof(wchar_t), 0);
 
         if (bytes > 0) {
             wcout << buffer << endl;
