@@ -16,7 +16,7 @@ void stopSignalHandler(int signum) {
 }
 
 string getHelpMsg() {
-    return "Usage:\n  client IP PORT\n    Connect to the server at the specified IP address and port.\n  client --help\n    Show this help message.\n";
+    return "Usage:\n  client IP PORT Nickname\n    Connect to the server at the specified IP address and port using Nickname.\n  client --help\n    Show this help message.\n";
 }
 
 int main(int argc, char *argv[]) {
