@@ -6,7 +6,7 @@
 
 using namespace std;
 
-wostream& operator<<(wostream& os, const IPv4Addr ip) {
+ostream& operator<<(ostream& os, const IPv4Addr ip) {
     return os << static_cast<int>(ip.octet[0]) << "."
               << static_cast<int>(ip.octet[1]) << "."
               << static_cast<int>(ip.octet[2]) << "."

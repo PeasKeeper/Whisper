@@ -1,11 +1,12 @@
 #include "Client.h"
 
-#include <wchar.h>
+#include <iostream>
 #include <string.h>
 #include <unistd.h>
 #include <thread>
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <array>
 
 using namespace std;
 
@@ -14,7 +15,7 @@ Client::Client () {
     sock = -1;
 }
 
-int Client::start (char* serverIP, int port, wstring nickname) {
+int Client::start (char* serverIP, int port, string nickname) {
     sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock == -1) {
         perror("Socket failed");
@@ -36,35 +37,33 @@ int Client::start (char* serverIP, int port, wstring nickname) {
         return -3;
     }
 
-    send(sock, reinterpret_cast<const void*>(nickname.data()), (nickname.size()+1) * sizeof(wchar_t), 0);
+    send(sock, reinterpret_cast<const void*>(nickname.data()), nickname.size()+1, 0);
 
-    wstring message = L"";
-    wchar_t buffer[BUFFER_SIZE] = {0};
+    array<char, BUFFER_SIZE> buffer = {};
 
     thread inputThread = thread([&]{
+        string message = "";
         while(running) {
-            getline(wcin, message, L'\n');
-            if (wcin.eof()) {
+            getline(cin, message, '\n');
+            if (cin.eof()) {
                 break;
             }
             if (message.size() > 0) {
-                send(sock, reinterpret_cast<const void*>(message.data()), (message.size()+1) * sizeof(wchar_t), 0);
+                send(sock, reinterpret_cast<const void*>(message.data()), message.size()+1, 0);
             }
         }
     });
 
     while (running) {
-        int bytes = recv(sock, buffer, (BUFFER_SIZE-1)*sizeof(wchar_t), 0);
+        int bytes = recv(sock, buffer.data(), BUFFER_SIZE-1, 0);
 
         if (bytes > 0) {
-            wcout << buffer << endl;
+            cout << buffer.data() << endl;
         }
-
         else if (!bytes){
-            wcout << L"\nServer shut down" << endl;
+            cout << "\nServer shut down" << endl;
             stop();
         }
-
         else {
             continue; // TODO: add error handling
         }
@@ -80,6 +79,5 @@ void Client::stop() {
     if (sock >= 0) {
         close(sock);
     }
-    wcout << L"\nPress enter to exit the application..." << endl;
-    //close(STDIN_FILENO); //closing wcin to join input thread
+    cout << "\nPress enter to exit the application..." << endl;
 }

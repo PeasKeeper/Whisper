@@ -5,5 +5,5 @@
 
 struct ClientData {
     std::thread clientThread;
-    std::wstring nickname = L"";
+    std::string nickname = "";
 };

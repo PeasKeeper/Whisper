@@ -1,9 +1,9 @@
 #pragma once
 
-#include <iostream>
+#include <string>
 #include <atomic>
 
-constexpr int BUFFER_SIZE = 1024;
+constexpr int BUFFER_SIZE = 4096;
 
 class Client {
     private:
@@ -14,6 +14,6 @@ class Client {
     public:
         Client ();
         ~Client () {};
-        int start (char* serverIP, int port, std::wstring nickname);
+        int start (char* serverIP, int port, std::string nickname);
         void stop ();
 };

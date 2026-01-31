@@ -1,7 +1,6 @@
 #include "Server.h"
 #include "IPv4Addr.h"
 
-#include <wchar.h>
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <string.h>
@@ -45,7 +44,7 @@ int Server::start (int port) {
         return -3;
     }
 
-    wcout << L"Server up on " << getLocalIPv4() << L":" << port << endl;
+    cout << "Server up on " << getLocalIPv4() << ":" << port << endl;
 
     while (running) {
         closeClients(clientsToClose, clientCloseMutex);
@@ -67,10 +66,10 @@ int Server::start (int port) {
 
         lock.unlock();
 
-        wcout << L"New user connected" << endl;
+        cout << "New user connected" << endl;
         
         thread t(&Server::handleClient, this, clientFd);
-        emplaceData.first->second.clientThread = move(t);
+        emplaceData.first->second.clientThread = std::move(t);
 
     }
     closeClients(clientsToClose, clientCloseMutex);
@@ -84,7 +83,7 @@ void Server::stop () {
     if (serverFd >= 0) {
         close(serverFd);
     }
-    wcout << L"\nServer shut down" << endl;
+    cout << "\nServer shut down" << endl;
 }
 
 void Server::closeClients (unordered_map<int, ClientData>& clients, mutex& clientMutex) {
@@ -97,7 +96,7 @@ void Server::closeClients (unordered_map<int, ClientData>& clients, mutex& clien
             if (client.second.clientThread.joinable()) {
                 client.second.clientThread.join();
             }
-            wcout << L"User disconnected" << endl;
+            cout << "User disconnected" << endl;
         }
         clients.clear();
     }
@@ -105,43 +104,40 @@ void Server::closeClients (unordered_map<int, ClientData>& clients, mutex& clien
 
 void Server::handleClient (const int clientFd) {
 
-    array<wchar_t, BUFFER_SIZE> buffer;
-    int bytes = 0;
+    array<char, BUFFER_SIZE> buffer = {};
+    int currentMsgSize = 0;
 
     while (true) {
-        bytes = recv(clientFd, buffer.data(), (buffer.size()-1) * sizeof(wchar_t), 0);
+        currentMsgSize = recv(clientFd, buffer.data(), buffer.size()-1, 0);
 
         if (!running) {
             break;
         }
 
-        if (bytes > 0) {
-
+        if (currentMsgSize > 0) {
             lock_guard<mutex> lock(activeClientMutex);
 
-            if (activeClients[clientFd].nickname == L"") {
-                activeClients[clientFd].nickname = buffer.data();
+            if (activeClients[clientFd].nickname == "") {
+                activeClients[clientFd].nickname = {buffer.data(), static_cast<size_t>(currentMsgSize-1)};
                 continue;
             }
 
-            if (!prependNickname(buffer, activeClients[clientFd].nickname)) {
+            if (!prependNickname(buffer, activeClients[clientFd].nickname, currentMsgSize)) {
                 // ignore for now
                 // TODO: add handling
                 continue;
             }
             for (auto &client : activeClients) {
                 if (client.first != clientFd) {
-                    send(client.first, static_cast<const void*>(buffer.data()), (wcslen(buffer.data())+1)*sizeof(wchar_t), 0);
+                    send(client.first, static_cast<const void*>(buffer.data()), currentMsgSize+1, 0);
                 }
             }
         }
-
-        else if (!bytes){
+        else if (!currentMsgSize){
             scoped_lock lock(activeClientMutex, clientCloseMutex);
             clientsToClose.insert(activeClients.extract(clientFd));
             break;
         }
-
         else {
             continue; // TODO: add error handling
         }
@@ -149,17 +145,17 @@ void Server::handleClient (const int clientFd) {
     return;
 }
 
-bool Server::prependNickname (array<wchar_t, BUFFER_SIZE>& buffer, const wstring& nickname) {
-
-    if (wcslen(buffer.data()) + nickname.size() >= BUFFER_SIZE) {
+bool Server::prependNickname(array<char, BUFFER_SIZE>& buffer, const string& nickname, int& msgSize) {
+    if (msgSize + nickname.size() >= BUFFER_SIZE) {
         return false;
     }
 
-    wstring tempNick = nickname + L": ";
+    string tempNick = nickname + ": ";
 
-    wstring res = tempNick + buffer.data();
+    string res = tempNick + string(buffer.data(), msgSize);
+    msgSize = res.size();
     copy(res.begin(), res.end(), buffer.begin());
-    buffer[res.size()] = L'\0';
+    buffer[res.size()] = '\0';
 
     return true;
 }
