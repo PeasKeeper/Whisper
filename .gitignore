@@ -1,3 +1,14 @@
 .vscode/
 build/
+build-*/
+cmake-build-*/
 debugBuild.sh
+*.user
+*.user.*
+*.autosave
+*.creator
+*.creator.user
+*.creator.user.*
+CMakeLists.txt.user
+.qtc_clangd/
+.qtc_settings/
