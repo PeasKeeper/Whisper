@@ -1,0 +1,16 @@
+project(WhisperServer LANGUAGES CXX)
+
+add_executable(server
+    main.cpp
+    Server.cpp
+    Server.h
+    IPv4Addr.cpp
+    IPv4Addr.h
+    ClientData.h
+    Group.h
+)
+
+target_include_directories(server
+    PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)

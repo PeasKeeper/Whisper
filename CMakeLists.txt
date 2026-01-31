@@ -4,37 +4,13 @@ project(Whisper LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-option(BUILD_SERVER "Build server" OFF)
-option(BUILD_CLIENT "Build client" OFF)
-option(BUILD_ALL "Build all targets" OFF)
-
-if(NOT BUILD_SERVER AND NOT BUILD_CLIENT AND NOT BUILD_ALL)
-    message(STATUS "No build option selected — defaulting to BUILD_ALL=ON")
-    set(BUILD_ALL ON)
-endif()
-
-if(BUILD_ALL)
-    set(BUILD_SERVER ON)
-    set(BUILD_CLIENT ON)
-endif()
+option(BUILD_SERVER "Build server" ON)
+option(BUILD_CLIENT "Build client" ON)
 
 if(BUILD_SERVER)
-    add_executable(server
-	src/server/main.cpp
-        src/server/Server.cpp
-        src/server/Server.h
-        src/server/IPv4Addr.cpp
-        src/server/IPv4Addr.h
-	src/server/ClientData.h
-    )
-    target_include_directories(server PRIVATE .)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/server)
 endif()
 
 if(BUILD_CLIENT)
-    add_executable(client
-	src/client/main.cpp
-        src/client/Client.cpp
-        src/client/Client.h
-    )
-    target_include_directories(client PRIVATE .)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/client)
 endif()
