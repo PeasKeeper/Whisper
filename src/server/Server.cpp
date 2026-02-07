@@ -1,6 +1,8 @@
 #include "Server.h"
 #include "IPv4Addr.h"
 
+#include <array>
+
 #include <cstring>
 
 #include <unistd.h>
@@ -123,11 +125,14 @@ void Server::handleClient (const int clientFd) {
                 continue;
             }
 
-            if (!prependNickname(buffer, activeClients[clientFd].nickname, currentMsgSize)) {
+            string currentMessage = string(buffer.data(), currentMsgSize);
+
+            if (!prependNickname(currentMessage, activeClients[clientFd].nickname, currentMsgSize)) {
                 // ignore for now
                 // TODO: add handling
                 continue;
             }
+
             for (auto &client : activeClients) {
                 if (client.first != clientFd) {
                     send(client.first, static_cast<const void*>(buffer.data()), currentMsgSize+1, 0);
@@ -146,17 +151,17 @@ void Server::handleClient (const int clientFd) {
     return;
 }
 
-bool Server::prependNickname(array<char, BUFFER_SIZE>& buffer, const string& nickname, int& msgSize) {
+bool Server::prependNickname(string& message, const string& nickname, int& msgSize) {
     if (msgSize + nickname.size() >= BUFFER_SIZE) {
         return false;
     }
 
     string tempNick = nickname + ": ";
 
-    string res = tempNick + string(buffer.data(), msgSize);
+    string res = tempNick + string(message.data(), msgSize);
     msgSize = res.size();
-    copy(res.begin(), res.end(), buffer.begin());
-    buffer[res.size()] = '\0';
+    copy(res.begin(), res.end(), message.begin());
+    message[res.size()] = '\0';
 
     return true;
 }

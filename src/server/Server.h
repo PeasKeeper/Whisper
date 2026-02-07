@@ -5,7 +5,6 @@
 #include <atomic>
 #include <unordered_map>
 #include <mutex>
-#include <array>
 
 constexpr int BUFFER_SIZE = 4096;
 
@@ -23,9 +22,7 @@ class Server {
 
         void handleClient (const int clientFd);
         void closeClients (std::unordered_map<int, ClientData>& clients, std::mutex& clientMutex);
-        bool prependNickname (std::array<char, BUFFER_SIZE>& buffer, const std::string& nickname, int& msgSize);
-        // not making buffer a class field bc
-        // it shouldn't be accesible from everywhere
+        bool prependNickname (std::string& message, const std::string& nickname, int& msgSize);
 
     public:
         Server ();
