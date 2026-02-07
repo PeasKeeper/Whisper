@@ -1,9 +1,10 @@
 #include "Client.h"
 
-#include <csignal>
-#include <locale.h>
-#include <string.h>
 #include <iostream>
+
+#include <csignal>
+#include <clocale>
+#include <cstring>
 
 using namespace std;
 

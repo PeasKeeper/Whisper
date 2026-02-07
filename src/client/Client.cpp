@@ -1,12 +1,14 @@
 #include "Client.h"
 
 #include <iostream>
-#include <string.h>
-#include <unistd.h>
 #include <thread>
+#include <array>
+
+#include <cstring>
+
+#include <unistd.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
-#include <array>
 
 using namespace std;
 

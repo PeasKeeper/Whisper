@@ -2,7 +2,6 @@
 
 #include "ClientData.h"
 
-#include <iostream>
 #include <atomic>
 #include <unordered_map>
 #include <mutex>

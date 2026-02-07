@@ -1,9 +1,10 @@
 #include "Server.h"
 #include "IPv4Addr.h"
 
+#include <cstring>
+
 #include <unistd.h>
 #include <arpa/inet.h>
-#include <string.h>
 
 using namespace std;
 

@@ -1,8 +1,10 @@
 #include "Server.h"
 
-#include <locale>
+#include <iostream>
+
+#include <clocale>
 #include <csignal> 
-#include <string.h>
+#include <cstring>
 
 using namespace std;
 
