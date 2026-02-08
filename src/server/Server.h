@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ClientData.h"
+#include "Group.h"
 
 #include <atomic>
 #include <unordered_map>
@@ -19,6 +20,8 @@ class Server {
 
         std::unordered_map<int, ClientData> activeClients;
         std::unordered_map<int, ClientData> clientsToClose;
+
+        std::unordered_map<std::string, Group> groups;
 
         void handleClient (const int clientFd);
         void closeClients (std::unordered_map<int, ClientData>& clients, std::mutex& clientMutex);

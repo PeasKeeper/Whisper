@@ -2,6 +2,8 @@
 #include "IPv4Addr.h"
 
 #include <array>
+#include <vector>
+#include <sstream>
 
 #include <cstring>
 
@@ -9,6 +11,21 @@
 #include <arpa/inet.h>
 
 using namespace std;
+
+namespace {
+
+vector<string> parseString (string src) {
+    istringstream iss(src);
+    std::vector<std::string> words;
+    std::string word;
+
+    while (iss >> word) {
+        words.push_back(word);
+    }
+    return words;
+}
+
+}
 
 Server::Server () {
     running = true;
@@ -65,7 +82,7 @@ int Server::start (int port) {
 
         unique_lock<mutex> lock(activeClientMutex);
 
-        auto emplaceData = activeClients.emplace(clientFd, ClientData());
+        auto emplaceData = activeClients.emplace(clientFd, ClientData{clientFd});
 
         lock.unlock();
 
@@ -128,13 +145,55 @@ void Server::handleClient (const int clientFd) {
             currentMsgSize--;
             string currentMessage = string(buffer.data(), currentMsgSize);
 
+            if (currentMessage.find("/NEWGRP") == 0) {
+                vector<string> words = parseString(currentMessage);
+                string& groupName = words[1]; // just for clarity
+                string& groupPasswd = words[2];
+                Group newGroup = {{}, groupName, groupPasswd};
+                groups.emplace(groupName, newGroup);
+                continue;
+            }
+
+            if (currentMessage.find("/JOINGRP") == 0) {
+                vector<string> words = parseString(currentMessage);
+                string& requestedGroupName = words[1]; // just for clarity
+                string& sentGroupPasswd = words[2];
+                if (groups.find(requestedGroupName) != groups.end()) {
+                    if (groups[requestedGroupName].password == sentGroupPasswd) {
+                        groups[requestedGroupName].users.emplace(clientFd, activeClients[clientFd]);
+                        activeClients[clientFd].groupName = requestedGroupName;
+                    }
+                    else {
+                        // wrong password
+                        // TODO: add handling
+                    }
+                }
+                else {
+                    // wrong name
+                    // TODO: add handling
+                }
+                continue;
+            }
+
+            if (currentMessage.find("/LEAVEGRP") == 0) {
+                string& currentUserGroup = activeClients[clientFd].groupName;
+                if (groups[currentUserGroup].users.size() == 1) {
+                    groups.erase(activeClients[clientFd].groupName);
+                }
+
+                groups[currentUserGroup].users.erase(clientFd);
+                currentUserGroup = "";
+                continue;
+            }
+
             if (!prependNickname(currentMessage, activeClients[clientFd].nickname, currentMsgSize)) {
                 // ignore for now
                 // TODO: add handling
                 continue;
             }
 
-            for (auto &client : activeClients) {
+            const string& currentUserGroup = activeClients[clientFd].groupName;
+            for (auto& client : groups[currentUserGroup].users) {
                 if (client.first != clientFd) {
                     send(client.first, static_cast<const void*>(currentMessage.data()), currentMsgSize+1, 0);
                 }
