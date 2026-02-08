@@ -125,6 +125,7 @@ void Server::handleClient (const int clientFd) {
                 continue;
             }
 
+            currentMsgSize--;
             string currentMessage = string(buffer.data(), currentMsgSize);
 
             if (!prependNickname(currentMessage, activeClients[clientFd].nickname, currentMsgSize)) {
@@ -135,7 +136,7 @@ void Server::handleClient (const int clientFd) {
 
             for (auto &client : activeClients) {
                 if (client.first != clientFd) {
-                    send(client.first, static_cast<const void*>(buffer.data()), currentMsgSize+1, 0);
+                    send(client.first, static_cast<const void*>(currentMessage.data()), currentMsgSize+1, 0);
                 }
             }
         }
@@ -160,6 +161,7 @@ bool Server::prependNickname(string& message, const string& nickname, int& msgSi
 
     string res = tempNick + string(message.data(), msgSize);
     msgSize = res.size();
+    message.resize(msgSize);
     copy(res.begin(), res.end(), message.begin());
     message[res.size()] = '\0';
 
