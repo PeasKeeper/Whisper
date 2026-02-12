@@ -144,23 +144,51 @@ void Server::handleClient (const int clientFd) {
 
             currentMsgSize--;
             string currentMessage = string(buffer.data(), currentMsgSize);
+            const string& currentUserGroup = activeClients[clientFd].groupName;
+
+            if (currentMessage.find("/LSGRP") == 0) {
+                if (groups.empty()) {
+                    continue;
+                }
+                currentMessage = "";
+                for (const auto &group : groups) {
+                    currentMessage += group.second.groupName;
+                    if (group.second.password != "") {
+                        currentMessage += u8" \U0001F512";
+                    }
+                    currentMessage += "\n";
+                }
+                currentMsgSize = currentMessage.size();
+                send(clientFd, static_cast<const void*>(currentMessage.data()), currentMsgSize+1, 0);
+                continue;
+            }
 
             if (currentMessage.find("/NEWGRP") == 0) {
                 vector<string> words = parseString(currentMessage);
                 string& groupName = words[1]; // just for clarity
-                string& groupPasswd = words[2];
+                string groupPasswd = "";
+                if (words.size() == 3) {
+                    groupPasswd = words[2];
+                }
                 Group newGroup = {{}, groupName, groupPasswd};
                 groups.emplace(groupName, newGroup);
                 continue;
             }
 
             if (currentMessage.find("/JOINGRP") == 0) {
+                if (currentUserGroup != "") {
+                    continue;
+                }
                 vector<string> words = parseString(currentMessage);
                 string& requestedGroupName = words[1]; // just for clarity
-                string& sentGroupPasswd = words[2];
+                string sentGroupPasswd = "";
+                if (words.size() == 3) {
+                    sentGroupPasswd = words[2];
+                }
                 if (groups.find(requestedGroupName) != groups.end()) {
-                    if (groups[requestedGroupName].password == sentGroupPasswd) {
-                        groups[requestedGroupName].users.emplace(clientFd, activeClients[clientFd]);
+                    Group& currentGroup = groups[requestedGroupName];
+                    if (currentGroup.password == sentGroupPasswd) {
+                        currentGroup.users.emplace(clientFd, activeClients[clientFd]);
                         activeClients[clientFd].groupName = requestedGroupName;
                     }
                     else {
@@ -192,7 +220,6 @@ void Server::handleClient (const int clientFd) {
                 continue;
             }
 
-            const string& currentUserGroup = activeClients[clientFd].groupName;
             for (auto& client : groups[currentUserGroup].users) {
                 if (client.first != clientFd) {
                     send(client.first, static_cast<const void*>(currentMessage.data()), currentMsgSize+1, 0);
