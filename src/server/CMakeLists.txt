@@ -7,7 +7,6 @@ add_executable(server
     IPv4Addr.cpp
     IPv4Addr.h
     ClientData.h
-    Group.h
 )
 
 target_include_directories(server
