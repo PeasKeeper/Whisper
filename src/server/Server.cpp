@@ -165,11 +165,22 @@ void Server::handleClient (const int clientFd) {
 
             if (currentMessage.find("/NEWGRP") == 0) {
                 vector<string> words = parseString(currentMessage);
-                string& groupName = words[1]; // just for clarity
+                string groupName = "";
                 string groupPasswd = "";
-                if (words.size() == 3) {
+
+                switch (words.size()) {
+                case 3:
                     groupPasswd = words[2];
+                case 2:
+                    groupName = words[1];
+                    break;
+                default:
+                    currentMessage = "Cannot make a group with provided arguments";
+                    currentMsgSize = currentMessage.size();
+                    send(clientFd, static_cast<const void*>(currentMessage.data()), currentMsgSize+1, 0);
+                    continue;
                 }
+
                 Group newGroup = {{}, groupName, groupPasswd};
                 groups.emplace(groupName, newGroup);
                 continue;
@@ -180,11 +191,22 @@ void Server::handleClient (const int clientFd) {
                     continue;
                 }
                 vector<string> words = parseString(currentMessage);
-                string& requestedGroupName = words[1]; // just for clarity
+                string requestedGroupName = "";
                 string sentGroupPasswd = "";
-                if (words.size() == 3) {
+
+                switch (words.size()) {
+                case 3:
                     sentGroupPasswd = words[2];
+                case 2:
+                    requestedGroupName = words[1];
+                    break;
+                default:
+                    currentMessage = "Cannot join a group with provided arguments";
+                    currentMsgSize = currentMessage.size();
+                    send(clientFd, static_cast<const void*>(currentMessage.data()), currentMsgSize+1, 0);
+                    continue;
                 }
+
                 if (groups.find(requestedGroupName) != groups.end()) {
                     Group& currentGroup = groups[requestedGroupName];
                     if (currentGroup.password == sentGroupPasswd) {
@@ -192,25 +214,29 @@ void Server::handleClient (const int clientFd) {
                         activeClients[clientFd].groupName = requestedGroupName;
                     }
                     else {
-                        // wrong password
-                        // TODO: add handling
+                        currentMessage = "Wrong password\n";
+                        currentMsgSize = currentMessage.size();
+                        send(clientFd, static_cast<const void*>(currentMessage.data()), currentMsgSize+1, 0);
                     }
                 }
                 else {
-                    // wrong name
-                    // TODO: add handling
+                    currentMessage = "Group not found\n";
+                    currentMsgSize = currentMessage.size();
+                    send(clientFd, static_cast<const void*>(currentMessage.data()), currentMsgSize+1, 0);
                 }
                 continue;
             }
 
             if (currentMessage.find("/LEAVEGRP") == 0) {
-                string& currentUserGroup = activeClients[clientFd].groupName;
-                if (groups[currentUserGroup].users.size() == 1) {
+                auto it = groups.find(currentUserGroup);
+                if (it == groups.end()) {
+                    return;
+                }
+                groups[currentUserGroup].users.erase(clientFd);
+                if (it->second.users.size() == 0) {
                     groups.erase(activeClients[clientFd].groupName);
                 }
-
-                groups[currentUserGroup].users.erase(clientFd);
-                currentUserGroup = "";
+                activeClients[clientFd].groupName = "";
                 continue;
             }
 
