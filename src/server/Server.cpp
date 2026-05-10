@@ -139,7 +139,18 @@ void Server::handleClient (const int clientFd) {
 
         if (currentMsgSize <= 0){
             scoped_lock lock(activeClientMutex, clientCloseMutex);
-            clientsToClose.insert(activeClients.extract(clientFd));
+            auto clientIt = activeClients.find(clientFd);
+            if (clientIt == activeClients.end()) {
+                return;
+            }
+            auto groupIt = groups.find(clientIt->second.groupName);
+            if (groupIt != groups.end()) {
+                groupIt->second.users.erase(clientIt->first);
+                if (groupIt->second.users.empty()) {
+                    groups.erase(groupIt);
+                }
+            }
+            clientsToClose.insert(activeClients.extract(clientIt));
             break;
         }
 
@@ -193,9 +204,14 @@ void Server::handleClient (const int clientFd) {
                 }
 
                 Group newGroup = {{}, groupName, groupPasswd};
-                groups.emplace(groupName, newGroup);
-
-                string answer = "Made a new group. Name: " + groupName + ", password: " + groupPasswd + ".\n";
+                auto result = groups.emplace(groupName, newGroup);
+                string answer = "";
+                if (result.second) {
+                    answer = "Made a new group. Name: " + groupName + ", password: " + groupPasswd + ".\n";
+                }
+                else {
+                    answer = "Group already exists.\n";
+                }
                 sendMessage(clientFd, answer);
                 continue;
             }
@@ -244,12 +260,13 @@ void Server::handleClient (const int clientFd) {
                 }
 
                 it->second.users.erase(clientFd);
-                sendMessage(clientFd, "Left " + currentUserGroup + "\n");
+                string message = "Left " + currentUserGroup + "\n";
 
                 if (it->second.users.empty()) {
                     groups.erase(currentUserGroup);
-                    sendMessage(clientFd, "Last user left, group destroyed\n");
+                    message += "Last user left, group destroyed\n";
                 }
+                sendMessage(clientFd, message);
                 currentUserGroup = "";
                 continue;
             }
@@ -258,6 +275,10 @@ void Server::handleClient (const int clientFd) {
                 sendMessage(clientFd, "Incorrect command.\n");
                 continue;
             }
+        }
+
+        if (currentUserGroup.empty()) {
+            continue;
         }
 
         if (!prependNickname(currentMessage, activeClients[clientFd].nickname)) {
