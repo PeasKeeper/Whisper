@@ -56,6 +56,8 @@ int Client::start (char* serverIP, int port, string nickname) {
         }
     });
 
+    cout <<  "\033[0;37mYou can list exiting groups by typing /LSGRP\nYou can make a new group by typing /NEWGRP group_name password\nYou can join an existing group by typing /JOINGRP group_name password\nYou can leave a group by typing /LEAVEGRP \033[0m \n" << endl;
+
     while (running) {
         int bytes = recv(sock, buffer.data(), BUFFER_SIZE-1, 0);
 
