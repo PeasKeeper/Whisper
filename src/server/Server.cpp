@@ -1,9 +1,12 @@
 #include "Server.h"
 #include "IPv4Addr.h"
 
+#include <consts.h>
+#include <Utils.h>
+
 #include <array>
+#include <sys/types.h>
 #include <vector>
-#include <sstream>
 
 #include <cstring>
 
@@ -11,21 +14,6 @@
 #include <arpa/inet.h>
 
 using namespace std;
-
-namespace {
-
-vector<string> parseString (const string& src) {
-    istringstream iss(src);
-    std::vector<std::string> words;
-    std::string word;
-
-    while (iss >> word) {
-        words.push_back(word);
-    }
-    return words;
-}
-
-}
 
 Server::Server () {
     running = true;
@@ -131,27 +119,39 @@ void Server::closeClients (unordered_map<int, ClientData>& clients, mutex& clien
 
 void Server::handleClient (const int clientFd) {
 
-    array<char, BUFFER_SIZE> buffer = {};
-    int currentMsgSize = 0;
+    array<unsigned char, FRAME_LENGTH_FIELD_SIZE> frameSizeBuf = {};
 
     while (true) {
-        currentMsgSize = recv(clientFd, buffer.data(), buffer.size()-1, 0);
+        size_t receivedBytes = 0;
+        size_t currentMsgSize = 0;
 
-        if (currentMsgSize <= 0){
-            scoped_lock lock(activeClientMutex, clientCloseMutex);
-            auto clientIt = activeClients.find(clientFd);
-            if (clientIt == activeClients.end()) {
+        while (receivedBytes < FRAME_LENGTH_FIELD_SIZE) {
+            ssize_t n = recv(clientFd, frameSizeBuf.data() + receivedBytes, FRAME_LENGTH_FIELD_SIZE - receivedBytes, 0);
+            if (n <= 0) {
+                handleClientDisconnect(clientFd);
                 return;
             }
-            auto groupIt = groups.find(clientIt->second.groupName);
-            if (groupIt != groups.end()) {
-                groupIt->second.users.erase(clientIt->first);
-                if (groupIt->second.users.empty()) {
-                    groups.erase(groupIt);
-                }
+            receivedBytes += n;
+        }
+
+        uint32_t netLength = 0;
+        std::memcpy(&netLength, frameSizeBuf.data(), FRAME_LENGTH_FIELD_SIZE);
+
+        uint32_t length = ntohl(netLength);
+
+        string currentMessage = "";
+        if (length > MAX_FRAME_SIZE) {
+            handleClientDisconnect(clientFd);
+            return;
+        }
+        currentMessage.resize(length);
+        while (currentMsgSize < length) {
+            ssize_t n = recv(clientFd, currentMessage.data() + currentMsgSize, length - currentMsgSize, 0);
+            if (n <= 0) {
+                handleClientDisconnect(clientFd);
+                return;
             }
-            clientsToClose.insert(activeClients.extract(clientIt));
-            break;
+            currentMsgSize += n;
         }
 
         if (!running) {
@@ -161,12 +161,10 @@ void Server::handleClient (const int clientFd) {
         lock_guard<mutex> lock(activeClientMutex);
 
         if (activeClients[clientFd].nickname.empty()) {
-            activeClients[clientFd].nickname = {buffer.data(), static_cast<size_t>(currentMsgSize-1)};
+            activeClients[clientFd].nickname = {currentMessage.data(), static_cast<size_t>(currentMsgSize)};
             continue;
         }
 
-        currentMsgSize--;
-        string currentMessage = string(buffer.data(), currentMsgSize);
         string& currentUserGroup = activeClients[clientFd].groupName;
 
         if (currentMessage.find("/") == 0) {
@@ -188,7 +186,7 @@ void Server::handleClient (const int clientFd) {
             }
 
             else if (currentMessage.find("/NEWGRP") == 0) {
-                vector<string> words = parseString(currentMessage);
+                vector<string> words = Utils::parseString(currentMessage);
                 string groupName = "";
                 string groupPasswd = "";
 
@@ -221,7 +219,7 @@ void Server::handleClient (const int clientFd) {
                     continue;
                 }
 
-                vector<string> words = parseString(currentMessage);
+                vector<string> words = Utils::parseString(currentMessage);
                 string requestedGroupName = "";
                 string sentGroupPasswd = "";
 
@@ -281,7 +279,7 @@ void Server::handleClient (const int clientFd) {
             continue;
         }
 
-        if (!prependNickname(currentMessage, activeClients[clientFd].nickname)) {
+        if (!Utils::prependString(currentMessage, activeClients[clientFd].nickname + ": ", MAX_FRAME_SIZE)) {
             sendMessage(clientFd, "Message is too long.\n");
             continue;
         }
@@ -294,25 +292,46 @@ void Server::handleClient (const int clientFd) {
     }
 }
 
-bool Server::prependNickname(string& message, const string& nickname) {
-    const string prefix = nickname + ": ";
-    size_t messageSize = message.size();
-    const size_t resultSize = prefix.size() + messageSize;
-
-    if (resultSize + 1 > BUFFER_SIZE) {
-        return false;
-    }
-
-    string res = prefix + string(message.data(), messageSize);
-    messageSize = res.size();
-    message.resize(messageSize);
-    copy(res.begin(), res.end(), message.begin());
-   // message[res.size()] = '\0';
-
-    return true;
-}
-
 ssize_t Server::sendMessage(int clientFd, const std::string& message) const {
     size_t messageSize = message.size();
-    return send(clientFd, static_cast<const void*>(message.data()), messageSize + 1, 0);
+    if (messageSize > MAX_FRAME_SIZE) {
+        return -1;
+    }
+
+    uint32_t netLength = htonl(static_cast<uint32_t>(messageSize));
+
+    std::vector<unsigned char> frame(FRAME_LENGTH_FIELD_SIZE + messageSize);
+
+    std::memcpy(frame.data(), &netLength, FRAME_LENGTH_FIELD_SIZE);
+    std::memcpy(frame.data() + FRAME_LENGTH_FIELD_SIZE, message.data(), messageSize);
+
+    if (message.empty()) {
+        return 0;
+    }
+
+    size_t sentBytes = 0;
+    while(sentBytes < frame.size()) {
+        ssize_t n = send(clientFd, reinterpret_cast<const void*>(frame.data() + sentBytes), frame.size() - sentBytes, 0);
+        if (n <= 0) {
+            return -1;
+        }
+        sentBytes += n;
+    }
+    return sentBytes;
+}
+
+void Server::handleClientDisconnect(int clientFd) {
+    scoped_lock lock(activeClientMutex, clientCloseMutex);
+    auto clientIt = activeClients.find(clientFd);
+    if (clientIt == activeClients.end()) {
+        return;
+    }
+    auto groupIt = groups.find(clientIt->second.groupName);
+    if (groupIt != groups.end()) {
+        groupIt->second.users.erase(clientIt->first);
+        if (groupIt->second.users.empty()) {
+            groups.erase(groupIt);
+        }
+    }
+    clientsToClose.insert(activeClients.extract(clientIt));
 }

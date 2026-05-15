@@ -3,13 +3,13 @@
 #include <string>
 #include <atomic>
 
-constexpr int BUFFER_SIZE = 4096;
-
 class Client {
     private:
         int sock;
 
         std::atomic<bool> running;
+
+        ssize_t sendMessage (const std::string& message) const;
 
     public:
         Client ();

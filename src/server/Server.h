@@ -7,8 +7,6 @@
 #include <unordered_map>
 #include <mutex>
 
-constexpr int BUFFER_SIZE = 4096;
-
 class Server {
     private:
         int serverFd;
@@ -25,9 +23,9 @@ class Server {
 
         void handleClient (const int clientFd);
         void closeClients (std::unordered_map<int, ClientData>& clients, std::mutex& clientMutex);
-        bool prependNickname (std::string& message, const std::string& nickname);
 
-        ssize_t sendMessage(int clientFd, const std::string& message) const;
+        ssize_t sendMessage (int clientFd, const std::string& message) const;
+        void handleClientDisconnect (int clientFd);
 
     public:
         Server ();
