@@ -5,13 +5,16 @@
 #include <Utils.h>
 
 #include <array>
-#include <sys/types.h>
+#include <mutex>
+#include <cstddef>
 #include <vector>
 
 #include <cstring>
 
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <sys/types.h>
+#include <sys/socket.h>
 
 using namespace std;
 
@@ -158,14 +161,19 @@ void Server::handleClient (const int clientFd) {
             break;
         }
 
-        lock_guard<mutex> lock(activeClientMutex);
+        unique_lock<mutex> lock(activeClientMutex);
 
-        if (activeClients[clientFd].nickname.empty()) {
-            activeClients[clientFd].nickname = {currentMessage.data(), static_cast<size_t>(currentMsgSize)};
+        auto clientIt = activeClients.find(clientFd);
+        if (clientIt == activeClients.cend()) {
+            break;
+        }
+
+        if (clientIt->second.nickname.empty()) {
+            clientIt->second.nickname = {currentMessage.data(), static_cast<size_t>(currentMsgSize)};
             continue;
         }
 
-        string& currentUserGroup = activeClients[clientFd].groupName;
+        string& currentUserGroup = clientIt->second.groupName;
 
         if (currentMessage.find("/") == 0) {
             if (currentMessage.find("/LSGRP") == 0) {
@@ -311,7 +319,7 @@ ssize_t Server::sendMessage(int clientFd, const std::string& message) const {
 
     size_t sentBytes = 0;
     while(sentBytes < frame.size()) {
-        ssize_t n = send(clientFd, reinterpret_cast<const void*>(frame.data() + sentBytes), frame.size() - sentBytes, 0);
+        ssize_t n = send(clientFd, reinterpret_cast<const void*>(frame.data() + sentBytes), frame.size() - sentBytes, MSG_NOSIGNAL);
         if (n <= 0) {
             return -1;
         }

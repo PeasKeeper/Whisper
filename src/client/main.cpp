@@ -1,5 +1,7 @@
 #include "Client.h"
 
+#include <StopReason.h>
+
 #include <iostream>
 
 #include <csignal>
@@ -12,7 +14,7 @@ static Client* clientInstance = nullptr; // ptr for signal handling, can not be 
 
 void stopSignalHandler(int signum) {
     if (clientInstance != nullptr) {
-        clientInstance->stop();
+        clientInstance->stop(StopReason::LocalUser);
     }
 }
 
@@ -41,6 +43,10 @@ int main(int argc, char *argv[]) {
     if (argc == 4) {
         serverIP = argv[1];
         port = atoi(argv[2]);
+        if (!strcmp(argv[3], "")) {
+            cout << "Invalid nickname." << endl;
+            return -1;
+        }
         nickname = argv[3];
     }
     else {

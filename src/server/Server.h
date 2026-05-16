@@ -7,6 +7,8 @@
 #include <unordered_map>
 #include <mutex>
 
+#include <sys/types.h>
+
 class Server {
     private:
         int serverFd;
