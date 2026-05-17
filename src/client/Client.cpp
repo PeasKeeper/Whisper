@@ -1,14 +1,11 @@
 #include "Client.h"
 #include "StopReason.h"
 
-#include <consts.h>
+#include <SocketAdapter.h>
+#include <StringUtils.h>
 
-#include <cstdint>
 #include <iostream>
-#include <sys/types.h>
 #include <thread>
-#include <array>
-#include <vector>
 
 #include <cstring>
 
@@ -22,7 +19,6 @@ using namespace std;
 Client::Client () {
     running = true;
     sock = -1;
-    stopReason = StopReason::None;
 }
 
 int Client::start (char* serverIP, int port, string nickname) {
@@ -47,8 +43,15 @@ int Client::start (char* serverIP, int port, string nickname) {
         return -3;
     }
 
-    if (sendMessage(nickname) <= 0) {
-        stop(StopReason::NetworkError);
+    auto verboseStop = [this](StopReason reason){
+        if(stop(reason)) {
+            printStopMessage();
+        }
+    };
+
+    StopReason result = SocketAdapter::sendMessage(sock, StringUtils::stringToBytes(nickname));
+    if (result != StopReason::None) {
+        verboseStop(result);
         return -4;
     }
 
@@ -59,8 +62,12 @@ int Client::start (char* serverIP, int port, string nickname) {
             if (cin.eof()) {
                 break;
             }
-            if (sendMessage(message) < 0) {
-                stop(StopReason::NetworkError);
+            if (message.empty()) {
+                continue;
+            }
+            StopReason result = SocketAdapter::sendMessage(sock, StringUtils::stringToBytes(message));
+            if (result != StopReason::None) {
+                verboseStop(result);
                 break;
             }
         }
@@ -68,102 +75,39 @@ int Client::start (char* serverIP, int port, string nickname) {
 
     cout <<  "\033[0;37mYou can list existing groups by typing /LSGRP\nYou can make a new group by typing /NEWGRP group_name password\nYou can join an existing group by typing /JOINGRP group_name password\nYou can leave a group by typing /LEAVEGRP \033[0m \n" << endl;
 
-    array<unsigned char, FRAME_LENGTH_FIELD_SIZE> frameSizeBuf = {};
-
     while (running) {
-        size_t receivedBytes = 0;
-        size_t currentMsgSize = 0;
-
-        while (receivedBytes < FRAME_LENGTH_FIELD_SIZE) {
-            ssize_t n = recv(sock, frameSizeBuf.data() + receivedBytes, FRAME_LENGTH_FIELD_SIZE - receivedBytes, 0);
-            if (n <= 0) {
-                stop(StopReason::ServerClosed);
-                break;
-            }
-            receivedBytes += n;
-        }
-
-        if (!running) {
+        ReceiveResult result = SocketAdapter::receiveMessage(sock);
+        if (result.stopReason != StopReason::None) {
+            verboseStop(result.stopReason);
             break;
         }
-
-        uint32_t netLength = 0;
-        std::memcpy(&netLength, frameSizeBuf.data(), FRAME_LENGTH_FIELD_SIZE);
-
-        uint32_t length = ntohl(netLength);
-
-        string currentMessage = "";
-        if (length > MAX_FRAME_SIZE) {
-            stop(StopReason::ProtocolError);
-            break;
-        }
-
-        currentMessage.resize(length);
-
-        while (currentMsgSize < length) {
-            ssize_t n = recv(sock, currentMessage.data() + currentMsgSize, length - currentMsgSize, 0);
-            if (n <= 0) {
-                if (stopReason != StopReason::LocalUser) {
-                    stop(StopReason::ServerClosed);
-                }
-                break;
-            }
-            currentMsgSize += n;
-        }
-        if (!running) {
-            break;
-        }
+        string currentMessage = StringUtils::bytesToString(result.payload);
         cout << currentMessage << endl;
     }
+
+    cout << "\nPress enter to exit the application..." << endl;
 
     inputThread.join();
 
     return 0;
 }
 
-void Client::stop(StopReason reason) {
+bool Client::stop(StopReason reason) {
     bool wasRunning = running.exchange(false);
     if (!wasRunning) {
-        return;
+        return false;
     }
 
     stopReason = reason;
 
     if (sock >= 0) {
+        shutdown(sock, SHUT_RDWR);
         close(sock);
     }
-    printStopMessage();
+    return true;
 }
 
- ssize_t Client::sendMessage (const std::string& message) const {
-     if (message.empty()) {
-         return 0;
-     }
-
-     size_t messageSize = message.size();
-     if (messageSize > MAX_FRAME_SIZE) {
-         return -1;
-     }
-
-     uint32_t netLength = htonl(static_cast<uint32_t>(messageSize));
-
-     std::vector<unsigned char> frame(FRAME_LENGTH_FIELD_SIZE + messageSize);
-
-     std::memcpy(frame.data(), &netLength, FRAME_LENGTH_FIELD_SIZE);
-     std::memcpy(frame.data() + FRAME_LENGTH_FIELD_SIZE, message.data(), messageSize);
-
-     size_t sentBytes = 0;
-     while(sentBytes < frame.size()) {
-         ssize_t n = send(sock, reinterpret_cast<const void*>(frame.data() + sentBytes), frame.size() - sentBytes, MSG_NOSIGNAL);
-         if (n <= 0) {
-             return -1;
-         }
-         sentBytes += n;
-     }
-     return sentBytes;
- }
-
- void Client::printStopMessage () const {
+ void Client::printStopMessage() const {
      switch (stopReason) {
         case StopReason::None:
         case StopReason::LocalUser:
@@ -174,9 +118,8 @@ void Client::stop(StopReason reason) {
             cout << "\nReceived invalid message." << endl;
             break;
 
-        case StopReason::ServerClosed:
+        case StopReason::PeerClosed:
             cout << "\nServer shut down" << endl;
             break;
      }
-     cout << "\nPress enter to exit the application..." << endl;
  }

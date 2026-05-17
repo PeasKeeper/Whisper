@@ -36,8 +36,11 @@ StopReason SocketAdapter::sendMessage(int sockFd, const vector<byte>& message) {
     size_t sentBytes = 0;
     while(sentBytes < frame.size()) {
         ssize_t n = send(sockFd, reinterpret_cast<const void*>(frame.data() + sentBytes), frame.size() - sentBytes, MSG_NOSIGNAL);
-        if (n <= 0) {
+        if (n < 0) {
             return StopReason::NetworkError;
+        }
+        if (n == 0) {
+            return StopReason::PeerClosed;
         }
         sentBytes += n;
     }
@@ -51,8 +54,11 @@ ReceiveResult SocketAdapter::receiveMessage(int sockFd) {
 
     while (receivedBytes < FRAME_LENGTH_FIELD_SIZE) {
         ssize_t n = recv(sockFd, frameSizeBuf.data() + receivedBytes, FRAME_LENGTH_FIELD_SIZE - receivedBytes, 0);
-        if (n <= 0) {
+        if (n < 0) {
             return {StopReason::NetworkError, {}};
+        }
+        if (n == 0) {
+            return {StopReason::PeerClosed, {}};
         }
         receivedBytes += n;
     }
@@ -69,8 +75,11 @@ ReceiveResult SocketAdapter::receiveMessage(int sockFd) {
     vector<byte> currentPayload(length);
     while (currentMsgSize < length) {
         ssize_t n = recv(sockFd, currentPayload.data() + currentMsgSize, length - currentMsgSize, 0);
-        if (n <= 0) {
+        if (n < 0) {
             return {StopReason::NetworkError, {}};
+        }
+        if (n == 0) {
+            return {StopReason::PeerClosed, {}};
         }
         currentMsgSize += n;
     }
