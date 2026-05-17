@@ -1,20 +1,18 @@
 #include "Server.h"
 #include "IPv4Addr.h"
+#include "StopReason.h"
 
 #include <consts.h>
-#include <Utils.h>
+#include <StringUtils.h>
+#include <SocketAdapter.h>
 
-#include <array>
 #include <mutex>
-#include <cstddef>
-#include <vector>
-
-#include <cstring>
 
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <vector>
 
 using namespace std;
 
@@ -121,41 +119,15 @@ void Server::closeClients (unordered_map<int, ClientData>& clients, mutex& clien
 }
 
 void Server::handleClient (const int clientFd) {
-
-    array<unsigned char, FRAME_LENGTH_FIELD_SIZE> frameSizeBuf = {};
+    std::vector<int> brokenClients;
 
     while (true) {
-        size_t receivedBytes = 0;
-        size_t currentMsgSize = 0;
-
-        while (receivedBytes < FRAME_LENGTH_FIELD_SIZE) {
-            ssize_t n = recv(clientFd, frameSizeBuf.data() + receivedBytes, FRAME_LENGTH_FIELD_SIZE - receivedBytes, 0);
-            if (n <= 0) {
-                handleClientDisconnect(clientFd);
-                return;
-            }
-            receivedBytes += n;
-        }
-
-        uint32_t netLength = 0;
-        std::memcpy(&netLength, frameSizeBuf.data(), FRAME_LENGTH_FIELD_SIZE);
-
-        uint32_t length = ntohl(netLength);
-
-        string currentMessage = "";
-        if (length > MAX_FRAME_SIZE) {
+        ReceiveResult result = SocketAdapter::receiveMessage(clientFd);
+        if (result.stopReason != StopReason::None) {
             handleClientDisconnect(clientFd);
-            return;
+            break;
         }
-        currentMessage.resize(length);
-        while (currentMsgSize < length) {
-            ssize_t n = recv(clientFd, currentMessage.data() + currentMsgSize, length - currentMsgSize, 0);
-            if (n <= 0) {
-                handleClientDisconnect(clientFd);
-                return;
-            }
-            currentMsgSize += n;
-        }
+        string currentMessage = StringUtils::bytesToString(result.payload);
 
         if (!running) {
             break;
@@ -169,163 +141,56 @@ void Server::handleClient (const int clientFd) {
         }
 
         if (clientIt->second.nickname.empty()) {
-            clientIt->second.nickname = {currentMessage.data(), static_cast<size_t>(currentMsgSize)};
+            clientIt->second.nickname = currentMessage;
             continue;
         }
 
-        string& currentUserGroup = clientIt->second.groupName;
+        string currentUserGroup = clientIt->second.groupName;
 
         if (currentMessage.find("/") == 0) {
-            if (currentMessage.find("/LSGRP") == 0) {
-                if (groups.empty()) {
-                    continue;
-                }
-
-                string answer = "";
-                for (const auto &group : groups) {
-                    answer += group.second.groupName;
-                    if (!group.second.password.empty()) {
-                        answer += u8" \U0001F512";
-                    }
-                    answer += "\n";
-                }
-                sendMessage(clientFd, answer);
-                continue;
-            }
-
-            else if (currentMessage.find("/NEWGRP") == 0) {
-                vector<string> words = Utils::parseString(currentMessage);
-                string groupName = "";
-                string groupPasswd = "";
-
-                switch (words.size()) {
-                case 3:
-                    groupPasswd = words[2];
-                case 2:
-                    groupName = words[1];
-                    break;
-                default:
-                    sendMessage(clientFd, "Cannot make a group with provided arguments.\n");
-                    continue;
-                }
-
-                Group newGroup = {{}, groupName, groupPasswd};
-                auto result = groups.emplace(groupName, newGroup);
-                string answer = "";
-                if (result.second) {
-                    answer = "Made a new group. Name: " + groupName + ", password: " + groupPasswd + ".\n";
-                }
-                else {
-                    answer = "Group already exists.\n";
-                }
-                sendMessage(clientFd, answer);
-                continue;
-            }
-
-            else if (currentMessage.find("/JOINGRP") == 0) {
-                if (!currentUserGroup.empty()) {
-                    continue;
-                }
-
-                vector<string> words = Utils::parseString(currentMessage);
-                string requestedGroupName = "";
-                string sentGroupPasswd = "";
-
-                switch (words.size()) {
-                case 3:
-                    sentGroupPasswd = words[2];
-                case 2:
-                    requestedGroupName = words[1];
-                    break;
-                default:
-                    sendMessage(clientFd, "Cannot join a group with provided arguments.\n");
-                    continue;
-                }
-
-                if (groups.find(requestedGroupName) == groups.end()) {
-                    sendMessage(clientFd, "Group not found\n");
-                    continue;
-                }
-
-                Group& currentGroup = groups[requestedGroupName];
-                if (currentGroup.password == sentGroupPasswd) {
-                    currentGroup.users.emplace(clientFd, activeClients[clientFd]);
-                    currentUserGroup = requestedGroupName;
-                    sendMessage(clientFd, "Joined " + requestedGroupName + "\n");
-                }
-                else {
-                    sendMessage(clientFd, "Wrong password\n");
-                }
-                continue;
-            }
-
-            else if (currentMessage.find("/LEAVEGRP") == 0) {
-                auto it = groups.find(currentUserGroup);
-                if (it == groups.end()) {
-                    continue;
-                }
-
-                it->second.users.erase(clientFd);
-                string message = "Left " + currentUserGroup + "\n";
-
-                if (it->second.users.empty()) {
-                    groups.erase(currentUserGroup);
-                    message += "Last user left, group destroyed\n";
-                }
-                sendMessage(clientFd, message);
-                currentUserGroup = "";
-                continue;
-            }
-
-            else {
-                sendMessage(clientFd, "Incorrect command.\n");
-                continue;
-            }
-        }
-
-        if (currentUserGroup.empty()) {
+            string answer = parseCommand(currentMessage, clientFd);
+            if (answer.empty()) break;
+            if (!sendOrMarkBroken(clientFd, answer, brokenClients)) break;
             continue;
         }
 
-        if (!Utils::prependString(currentMessage, activeClients[clientFd].nickname + ": ", MAX_FRAME_SIZE)) {
-            sendMessage(clientFd, "Message is too long.\n");
+        auto groupIt = groups.find(currentUserGroup);
+        if (groupIt == groups.end()) {
             continue;
         }
 
-        for (auto& client : groups[currentUserGroup].users) {
+        if (!StringUtils::prependString(currentMessage, clientIt->second.nickname + ": ", MAX_FRAME_SIZE)) {
+            if (!sendOrMarkBroken(clientFd, "Message is too long.\n", brokenClients)) break;
+            continue;
+        }
+
+        for (auto& client : groupIt->second.users) {
             if (client.first != clientFd) {
-                sendMessage(client.first, currentMessage);
+                if(!sendOrMarkBroken(client.first, currentMessage, brokenClients)) {
+                    continue;
+                }
             }
         }
+
+        lock.unlock();
+        for (auto& client : brokenClients) {
+            handleClientDisconnect(client);
+        }
+        brokenClients.clear();
     }
+    for (auto& client : brokenClients) {
+        handleClientDisconnect(client);
+    }
+    brokenClients.clear();
 }
 
-ssize_t Server::sendMessage(int clientFd, const std::string& message) const {
-    size_t messageSize = message.size();
-    if (messageSize > MAX_FRAME_SIZE) {
-        return -1;
+bool Server::sendOrMarkBroken(int clientFd, const std::string& message, vector<int>& brokenClients) {
+    StopReason result = SocketAdapter::sendMessage(clientFd, StringUtils::stringToBytes(message));
+    if (result != StopReason::None) {
+        brokenClients.push_back(clientFd);
+        return false;
     }
-
-    uint32_t netLength = htonl(static_cast<uint32_t>(messageSize));
-
-    std::vector<unsigned char> frame(FRAME_LENGTH_FIELD_SIZE + messageSize);
-
-    std::memcpy(frame.data(), &netLength, FRAME_LENGTH_FIELD_SIZE);
-    std::memcpy(frame.data() + FRAME_LENGTH_FIELD_SIZE, message.data(), messageSize);
-
-    if (message.empty()) {
-        return 0;
-    }
-
-    size_t sentBytes = 0;
-    while(sentBytes < frame.size()) {
-        ssize_t n = send(clientFd, reinterpret_cast<const void*>(frame.data() + sentBytes), frame.size() - sentBytes, MSG_NOSIGNAL);
-        if (n <= 0) {
-            return -1;
-        }
-        sentBytes += n;
-    }
-    return sentBytes;
+    return true;
 }
 
 void Server::handleClientDisconnect(int clientFd) {
@@ -343,3 +208,109 @@ void Server::handleClientDisconnect(int clientFd) {
     }
     clientsToClose.insert(activeClients.extract(clientIt));
 }
+
+ std::string Server::parseCommand(const string& message, int clientFd) {
+     string answer = "";
+     auto clientIt = activeClients.find(clientFd);
+
+     if (clientIt == activeClients.end()) {
+         return "";
+     }
+
+     string currentUserGroup = clientIt->second.groupName;
+
+     if (message.find("/LSGRP") == 0) {
+         if (groups.empty()) {
+             return "Currently there are no active groups.\n";
+         }
+
+         for (const auto &group : groups) {
+             answer += group.second.groupName;
+             if (!group.second.password.empty()) {
+                 answer += u8" \U0001F512";
+             }
+             answer += "\n";
+         }
+     }
+
+     else if (message.find("/NEWGRP") == 0) {
+         vector<string> words = StringUtils::parseString(message);
+         string groupName = "";
+         string groupPasswd = "";
+
+         switch (words.size()) {
+         case 3:
+             groupPasswd = words[2];
+         case 2:
+             groupName = words[1];
+             break;
+         default:
+             return "Cannot make a group with provided arguments.\n";
+         }
+
+         Group newGroup = {{}, groupName, groupPasswd};
+         auto result = groups.emplace(groupName, newGroup);
+         if (result.second) {
+             answer = "Made a new group. Name: " + groupName + ", password: " + groupPasswd + ".\n";
+         }
+         else {
+             answer = "Group already exists.\n";
+         }
+     }
+
+     else if (message.find("/JOINGRP") == 0) {
+         if (!currentUserGroup.empty()) {
+             return "You are already in a group. Leave it first, to join another group.\n";
+         }
+
+         vector<string> words = StringUtils::parseString(message);
+         string requestedGroupName = "";
+         string sentGroupPasswd = "";
+
+         switch (words.size()) {
+         case 3:
+             sentGroupPasswd = words[2];
+         case 2:
+             requestedGroupName = words[1];
+             break;
+         default:
+             return "Cannot join a group with provided arguments.\n";
+         }
+
+         auto requestedGroupIt = groups.find(requestedGroupName);
+
+         if (requestedGroupIt == groups.end()) {
+             return "Group not found\n";
+         }
+
+         if (requestedGroupIt->second.password == sentGroupPasswd) {
+             requestedGroupIt->second.users.emplace(clientFd, activeClients[clientFd]);
+             clientIt->second.groupName = requestedGroupName;
+             answer = "Joined " + requestedGroupName + "\n";
+         }
+         else {
+             answer = "Wrong password\n";
+         }
+     }
+
+     else if (message.find("/LEAVEGRP") == 0) {
+         auto it = groups.find(currentUserGroup);
+         if (it == groups.end()) {
+             return "You are not currently in a group.\n";
+         }
+
+         it->second.users.erase(clientFd);
+         answer = "Left " + currentUserGroup + "\n";
+
+         if (it->second.users.empty()) {
+             groups.erase(currentUserGroup);
+             answer += "Last user left, group destroyed\n";
+         }
+         clientIt->second.groupName.clear();
+     }
+
+     else {
+         answer = "Incorrect command.\n";
+     }
+     return answer;
+ }

@@ -1,7 +1,10 @@
 add_library(shared STATIC
-    Utils.cpp
-    Utils.h
+    StringUtils.cpp
+    StringUtils.h
     consts.h
+    StopReason.h
+    SocketAdapter.cpp
+    SocketAdapter.h
 )
 
 target_include_directories(shared

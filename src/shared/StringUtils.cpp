@@ -1,11 +1,11 @@
-#include "Utils.h"
+#include "StringUtils.h"
 
 #include <sstream>
 #include <algorithm>
 
 using namespace std;
 
-vector<string> Utils::parseString(const string& src) {
+vector<string> StringUtils::parseString(const string& src) {
     istringstream iss(src);
     vector<string> words;
     string word;
@@ -16,7 +16,7 @@ vector<string> Utils::parseString(const string& src) {
     return words;
 }
 
-bool Utils::prependString(string& src, const string& prefix, size_t maxLength) {
+bool StringUtils::prependString(string& src, const string& prefix, size_t maxLength) {
     size_t srcSize = src.size();
     const size_t resultSize = prefix.size() + srcSize;
 
@@ -30,4 +30,14 @@ bool Utils::prependString(string& src, const string& prefix, size_t maxLength) {
     copy(res.begin(), res.end(), src.begin());
 
     return true;
+}
+
+vector<byte> StringUtils::stringToBytes(const string& src) {
+    const auto* begin = reinterpret_cast<const byte*>(src.data());
+    return {begin, begin + src.size()};
+}
+
+string StringUtils::bytesToString(const vector<byte>& src) {
+    const auto* begin = reinterpret_cast<const char*>(src.data());
+    return {begin, begin + src.size()};
 }

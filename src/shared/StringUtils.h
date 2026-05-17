@@ -4,10 +4,12 @@
 #include <string>
 #include <cstddef>
 
-class Utils {
+class StringUtils {
     public:
-        Utils() = default;
-        ~Utils() = default;
+        StringUtils() = default;
+        ~StringUtils() = default;
         static std::vector<std::string> parseString(const std::string& src);
         static bool prependString(std::string& src, const std::string& prefix, std::size_t maxLength);
+        static std::vector<std::byte> stringToBytes(const std::string& src);
+        static std::string bytesToString(const std::vector<std::byte>& src);
 };
