@@ -5,5 +5,6 @@ enum class StopReason {
     LocalUser,
     PeerClosed,
     NetworkError,
-    ProtocolError
+    ProtocolError,
+    Timeout
 };

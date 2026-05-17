@@ -1,4 +1,5 @@
 #include "SocketAdapter.h"
+#include "StopReason.h"
 #include "consts.h"
 
 #include <array>
@@ -13,6 +14,7 @@
 #include <arpa/inet.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <poll.h>
 
 using namespace std;
 
@@ -48,19 +50,18 @@ StopReason SocketAdapter::sendMessage(int sockFd, const vector<byte>& message) {
 }
 
 ReceiveResult SocketAdapter::receiveMessage(int sockFd) {
-    array<unsigned char, FRAME_LENGTH_FIELD_SIZE> frameSizeBuf = {};
-    size_t receivedBytes = 0;
-    size_t currentMsgSize = 0;
+    array<byte, FRAME_LENGTH_FIELD_SIZE> frameSizeBuf = {};
 
-    while (receivedBytes < FRAME_LENGTH_FIELD_SIZE) {
-        ssize_t n = recv(sockFd, frameSizeBuf.data() + receivedBytes, FRAME_LENGTH_FIELD_SIZE - receivedBytes, 0);
-        if (n < 0) {
-            return {StopReason::NetworkError, {}};
-        }
-        if (n == 0) {
-            return {StopReason::PeerClosed, {}};
-        }
-        receivedBytes += n;
+    ssize_t n = recv(sockFd, frameSizeBuf.data(), 1, 0);
+    if (n < 0) {
+        return {StopReason::NetworkError, {}};
+    }
+    if (n == 0) {
+        return {StopReason::PeerClosed, {}};
+    }
+    StopReason result = recvExactWithTimeout(sockFd, frameSizeBuf.data() + n, FRAME_LENGTH_FIELD_SIZE - n);
+    if (result != StopReason::None) {
+        return {result, {}};
     }
 
     uint32_t netLength = 0;
@@ -73,16 +74,39 @@ ReceiveResult SocketAdapter::receiveMessage(int sockFd) {
     }
 
     vector<byte> currentPayload(length);
-    while (currentMsgSize < length) {
-        ssize_t n = recv(sockFd, currentPayload.data() + currentMsgSize, length - currentMsgSize, 0);
-        if (n < 0) {
-            return {StopReason::NetworkError, {}};
-        }
-        if (n == 0) {
-            return {StopReason::PeerClosed, {}};
-        }
-        currentMsgSize += n;
+    result = recvExactWithTimeout(sockFd, currentPayload.data(), length);
+    if (result != StopReason::None) {
+        return {result, {}};
     }
 
     return {StopReason::None, std::move(currentPayload)};
+}
+
+bool SocketAdapter::waitReadable(int fd) {
+    pollfd pfd{};
+    pfd.fd = fd;
+    pfd.events = POLLIN;
+
+    int result = poll(&pfd, 1, FRAME_TIMEOUT_MS);
+    return result > 0 && (pfd.revents & POLLIN);
+}
+
+StopReason SocketAdapter::recvExactWithTimeout(int fd, byte* buffer, size_t size) {
+    size_t receivedBytes = 0;
+    while (receivedBytes < size) {
+        if (!waitReadable(fd)) {
+            return StopReason::Timeout;
+        }
+
+        ssize_t n = recv(fd, buffer + receivedBytes, size - receivedBytes, 0);
+        if (n == 0) {
+            return StopReason::PeerClosed;
+        }
+        if (n < 0) {
+            return StopReason::NetworkError;
+        }
+        receivedBytes += static_cast<size_t>(n);
+    }
+
+    return StopReason::None;
 }

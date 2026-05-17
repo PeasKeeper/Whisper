@@ -114,6 +114,10 @@ bool Client::stop(StopReason reason) {
         case StopReason::NetworkError:
             break;
 
+        case StopReason::Timeout:
+            cout << "\nConnection timed out." << endl;
+            break;
+
         case StopReason::ProtocolError:
             cout << "\nReceived invalid message." << endl;
             break;
