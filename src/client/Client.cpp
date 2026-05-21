@@ -111,7 +111,10 @@ bool Client::stop(StopReason reason) {
      switch (stopReason) {
         case StopReason::None:
         case StopReason::LocalUser:
+            break;
+
         case StopReason::NetworkError:
+            cout << "\nNetwork error." << endl;
             break;
 
         case StopReason::Timeout:
@@ -123,7 +126,7 @@ bool Client::stop(StopReason reason) {
             break;
 
         case StopReason::PeerClosed:
-            cout << "\nServer shut down" << endl;
+            cout << "\nServer shut down." << endl;
             break;
      }
  }

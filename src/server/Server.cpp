@@ -136,7 +136,7 @@ void Server::handleClient (const int clientFd) {
         unique_lock<mutex> lock(activeClientMutex);
 
         auto clientIt = activeClients.find(clientFd);
-        if (clientIt == activeClients.cend()) {
+        if (clientIt == activeClients.end()) {
             break;
         }
 

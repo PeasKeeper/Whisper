@@ -1,7 +1,6 @@
 #include "StringUtils.h"
 
 #include <sstream>
-#include <algorithm>
 
 using namespace std;
 
@@ -17,18 +16,11 @@ vector<string> StringUtils::parseString(const string& src) {
 }
 
 bool StringUtils::prependString(string& src, const string& prefix, size_t maxLength) {
-    size_t srcSize = src.size();
-    const size_t resultSize = prefix.size() + srcSize;
-
-    if (resultSize > maxLength) {
+    if (prefix.size() + src.size() > maxLength) {
         return false;
     }
 
-    string res = prefix + string(src.data(), srcSize);
-    srcSize = res.size();
-    src.resize(srcSize);
-    copy(res.begin(), res.end(), src.begin());
-
+    src = prefix + src;
     return true;
 }
 
