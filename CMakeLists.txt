@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.12)
 project(Whisper LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -14,5 +14,6 @@ if(BUILD_SERVER)
 endif()
 
 if(BUILD_CLIENT)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/FTXUI)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/client)
 endif()

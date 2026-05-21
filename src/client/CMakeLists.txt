@@ -9,6 +9,9 @@ add_executable(client
 target_link_libraries(client
     PRIVATE
     shared
+    ftxui::screen
+    ftxui::dom
+    ftxui::component
 )
 
 target_include_directories(client
