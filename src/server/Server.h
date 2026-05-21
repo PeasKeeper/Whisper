@@ -4,10 +4,12 @@
 #include "Group.h"
 
 #include <atomic>
+#include <string>
 #include <unordered_map>
 #include <mutex>
+#include <vector>
 
-constexpr int BUFFER_SIZE = 4096;
+#include <sys/types.h>
 
 class Server {
     private:
@@ -25,9 +27,11 @@ class Server {
 
         void handleClient (const int clientFd);
         void closeClients (std::unordered_map<int, ClientData>& clients, std::mutex& clientMutex);
-        bool prependNickname (std::string& message, const std::string& nickname);
 
-        ssize_t sendMessage(int clientFd, const std::string& message) const;
+        bool sendOrMarkBroken (int clientFd, const std::string& message, std::vector<int>& brokenClients);
+        void handleClientDisconnect (int clientFd);
+
+        std::string parseCommand(const std::string& message, int clientFd);
 
     public:
         Server ();

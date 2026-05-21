@@ -1,14 +1,18 @@
 #include "Client.h"
+#include "StopReason.h"
+
+#include <SocketAdapter.h>
+#include <StringUtils.h>
 
 #include <iostream>
 #include <thread>
-#include <array>
 
 #include <cstring>
 
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <sys/socket.h>
 
 using namespace std;
 
@@ -39,9 +43,17 @@ int Client::start (char* serverIP, int port, string nickname) {
         return -3;
     }
 
-    send(sock, reinterpret_cast<const void*>(nickname.data()), nickname.size()+1, 0);
+    auto verboseStop = [this](StopReason reason){
+        if(stop(reason)) {
+            printStopMessage();
+        }
+    };
 
-    array<char, BUFFER_SIZE> buffer = {};
+    StopReason result = SocketAdapter::sendMessage(sock, StringUtils::stringToBytes(nickname));
+    if (result != StopReason::None) {
+        verboseStop(result);
+        return -4;
+    }
 
     thread inputThread = thread([&]{
         string message = "";
@@ -50,38 +62,71 @@ int Client::start (char* serverIP, int port, string nickname) {
             if (cin.eof()) {
                 break;
             }
-            if (message.size() > 0) {
-                send(sock, reinterpret_cast<const void*>(message.data()), message.size()+1, 0);
+            if (message.empty()) {
+                continue;
+            }
+            StopReason result = SocketAdapter::sendMessage(sock, StringUtils::stringToBytes(message));
+            if (result != StopReason::None) {
+                verboseStop(result);
+                break;
             }
         }
     });
 
-    cout <<  "\033[0;37mYou can list exiting groups by typing /LSGRP\nYou can make a new group by typing /NEWGRP group_name password\nYou can join an existing group by typing /JOINGRP group_name password\nYou can leave a group by typing /LEAVEGRP \033[0m \n" << endl;
+    cout <<  "\033[0;37mYou can list existing groups by typing /LSGRP\nYou can make a new group by typing /NEWGRP group_name password\nYou can join an existing group by typing /JOINGRP group_name password\nYou can leave a group by typing /LEAVEGRP \033[0m \n" << endl;
 
     while (running) {
-        int bytes = recv(sock, buffer.data(), BUFFER_SIZE-1, 0);
-
-        if (bytes > 0) {
-            cout << buffer.data() << endl;
+        ReceiveResult result = SocketAdapter::receiveMessage(sock);
+        if (result.stopReason != StopReason::None) {
+            verboseStop(result.stopReason);
+            break;
         }
-        else if (!bytes){
-            cout << "\nServer shut down" << endl;
-            stop();
-        }
-        else {
-            continue; // TODO: add error handling
-        }
+        string currentMessage = StringUtils::bytesToString(result.payload);
+        cout << currentMessage << endl;
     }
 
+    cout << "\nPress enter to exit the application..." << endl;
+
     inputThread.join();
-    
+
     return 0;
 }
 
-void Client::stop() {
-    running = false; 
+bool Client::stop(StopReason reason) {
+    bool wasRunning = running.exchange(false);
+    if (!wasRunning) {
+        return false;
+    }
+
+    stopReason = reason;
+
     if (sock >= 0) {
+        shutdown(sock, SHUT_RDWR);
         close(sock);
     }
-    cout << "\nPress enter to exit the application..." << endl;
+    return true;
 }
+
+ void Client::printStopMessage() const {
+     switch (stopReason) {
+        case StopReason::None:
+        case StopReason::LocalUser:
+            break;
+
+        case StopReason::NetworkError:
+            cout << "\nNetwork error." << endl;
+            break;
+
+        case StopReason::Timeout:
+            cout << "\nConnection timed out." << endl;
+            break;
+
+        case StopReason::ProtocolError:
+            cout << "\nReceived invalid message." << endl;
+            break;
+
+        case StopReason::PeerClosed:
+            cout << "\nServer shut down." << endl;
+            break;
+     }
+ }

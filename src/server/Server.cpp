@@ -1,31 +1,20 @@
 #include "Server.h"
 #include "IPv4Addr.h"
+#include "StopReason.h"
 
-#include <array>
-#include <vector>
-#include <sstream>
+#include <consts.h>
+#include <StringUtils.h>
+#include <SocketAdapter.h>
 
-#include <cstring>
+#include <mutex>
 
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <vector>
 
 using namespace std;
-
-namespace {
-
-vector<string> parseString (const string& src) {
-    istringstream iss(src);
-    std::vector<std::string> words;
-    std::string word;
-
-    while (iss >> word) {
-        words.push_back(word);
-    }
-    return words;
-}
-
-}
 
 Server::Server () {
     running = true;
@@ -130,189 +119,198 @@ void Server::closeClients (unordered_map<int, ClientData>& clients, mutex& clien
 }
 
 void Server::handleClient (const int clientFd) {
-
-    array<char, BUFFER_SIZE> buffer = {};
-    int currentMsgSize = 0;
+    std::vector<int> brokenClients;
 
     while (true) {
-        currentMsgSize = recv(clientFd, buffer.data(), buffer.size()-1, 0);
-
-        if (currentMsgSize <= 0){
-            scoped_lock lock(activeClientMutex, clientCloseMutex);
-            auto clientIt = activeClients.find(clientFd);
-            if (clientIt == activeClients.end()) {
-                return;
-            }
-            auto groupIt = groups.find(clientIt->second.groupName);
-            if (groupIt != groups.end()) {
-                groupIt->second.users.erase(clientIt->first);
-                if (groupIt->second.users.empty()) {
-                    groups.erase(groupIt);
-                }
-            }
-            clientsToClose.insert(activeClients.extract(clientIt));
+        ReceiveResult result = SocketAdapter::receiveMessage(clientFd);
+        if (result.stopReason != StopReason::None) {
+            handleClientDisconnect(clientFd);
             break;
         }
+        string currentMessage = StringUtils::bytesToString(result.payload);
 
         if (!running) {
             break;
         }
 
-        lock_guard<mutex> lock(activeClientMutex);
+        unique_lock<mutex> lock(activeClientMutex);
 
-        if (activeClients[clientFd].nickname.empty()) {
-            activeClients[clientFd].nickname = {buffer.data(), static_cast<size_t>(currentMsgSize-1)};
+        auto clientIt = activeClients.find(clientFd);
+        if (clientIt == activeClients.end()) {
+            break;
+        }
+
+        if (clientIt->second.nickname.empty()) {
+            clientIt->second.nickname = currentMessage;
             continue;
         }
 
-        currentMsgSize--;
-        string currentMessage = string(buffer.data(), currentMsgSize);
-        string& currentUserGroup = activeClients[clientFd].groupName;
+        string currentUserGroup = clientIt->second.groupName;
 
         if (currentMessage.find("/") == 0) {
-            if (currentMessage.find("/LSGRP") == 0) {
-                if (groups.empty()) {
-                    continue;
-                }
-
-                string answer = "";
-                for (const auto &group : groups) {
-                    answer += group.second.groupName;
-                    if (!group.second.password.empty()) {
-                        answer += u8" \U0001F512";
-                    }
-                    answer += "\n";
-                }
-                sendMessage(clientFd, answer);
-                continue;
-            }
-
-            else if (currentMessage.find("/NEWGRP") == 0) {
-                vector<string> words = parseString(currentMessage);
-                string groupName = "";
-                string groupPasswd = "";
-
-                switch (words.size()) {
-                case 3:
-                    groupPasswd = words[2];
-                case 2:
-                    groupName = words[1];
-                    break;
-                default:
-                    sendMessage(clientFd, "Cannot make a group with provided arguments.\n");
-                    continue;
-                }
-
-                Group newGroup = {{}, groupName, groupPasswd};
-                auto result = groups.emplace(groupName, newGroup);
-                string answer = "";
-                if (result.second) {
-                    answer = "Made a new group. Name: " + groupName + ", password: " + groupPasswd + ".\n";
-                }
-                else {
-                    answer = "Group already exists.\n";
-                }
-                sendMessage(clientFd, answer);
-                continue;
-            }
-
-            else if (currentMessage.find("/JOINGRP") == 0) {
-                if (!currentUserGroup.empty()) {
-                    continue;
-                }
-
-                vector<string> words = parseString(currentMessage);
-                string requestedGroupName = "";
-                string sentGroupPasswd = "";
-
-                switch (words.size()) {
-                case 3:
-                    sentGroupPasswd = words[2];
-                case 2:
-                    requestedGroupName = words[1];
-                    break;
-                default:
-                    sendMessage(clientFd, "Cannot join a group with provided arguments.\n");
-                    continue;
-                }
-
-                if (groups.find(requestedGroupName) == groups.end()) {
-                    sendMessage(clientFd, "Group not found\n");
-                    continue;
-                }
-
-                Group& currentGroup = groups[requestedGroupName];
-                if (currentGroup.password == sentGroupPasswd) {
-                    currentGroup.users.emplace(clientFd, activeClients[clientFd]);
-                    currentUserGroup = requestedGroupName;
-                    sendMessage(clientFd, "Joined " + requestedGroupName + "\n");
-                }
-                else {
-                    sendMessage(clientFd, "Wrong password\n");
-                }
-                continue;
-            }
-
-            else if (currentMessage.find("/LEAVEGRP") == 0) {
-                auto it = groups.find(currentUserGroup);
-                if (it == groups.end()) {
-                    continue;
-                }
-
-                it->second.users.erase(clientFd);
-                string message = "Left " + currentUserGroup + "\n";
-
-                if (it->second.users.empty()) {
-                    groups.erase(currentUserGroup);
-                    message += "Last user left, group destroyed\n";
-                }
-                sendMessage(clientFd, message);
-                currentUserGroup = "";
-                continue;
-            }
-
-            else {
-                sendMessage(clientFd, "Incorrect command.\n");
-                continue;
-            }
-        }
-
-        if (currentUserGroup.empty()) {
+            string answer = parseCommand(currentMessage, clientFd);
+            if (answer.empty()) break;
+            if (!sendOrMarkBroken(clientFd, answer, brokenClients)) break;
             continue;
         }
 
-        if (!prependNickname(currentMessage, activeClients[clientFd].nickname)) {
-            sendMessage(clientFd, "Message is too long.\n");
+        auto groupIt = groups.find(currentUserGroup);
+        if (groupIt == groups.end()) {
             continue;
         }
 
-        for (auto& client : groups[currentUserGroup].users) {
+        if (!StringUtils::prependString(currentMessage, clientIt->second.nickname + ": ", MAX_FRAME_SIZE)) {
+            if (!sendOrMarkBroken(clientFd, "Message is too long.\n", brokenClients)) break;
+            continue;
+        }
+
+        for (auto& client : groupIt->second.users) {
             if (client.first != clientFd) {
-                sendMessage(client.first, currentMessage);
+                if(!sendOrMarkBroken(client.first, currentMessage, brokenClients)) {
+                    continue;
+                }
             }
         }
+
+        lock.unlock();
+        for (auto& client : brokenClients) {
+            handleClientDisconnect(client);
+        }
+        brokenClients.clear();
     }
+    for (auto& client : brokenClients) {
+        handleClientDisconnect(client);
+    }
+    brokenClients.clear();
 }
 
-bool Server::prependNickname(string& message, const string& nickname) {
-    const string prefix = nickname + ": ";
-    size_t messageSize = message.size();
-    const size_t resultSize = prefix.size() + messageSize;
-
-    if (resultSize + 1 > BUFFER_SIZE) {
+bool Server::sendOrMarkBroken(int clientFd, const std::string& message, vector<int>& brokenClients) {
+    StopReason result = SocketAdapter::sendMessage(clientFd, StringUtils::stringToBytes(message));
+    if (result != StopReason::None) {
+        brokenClients.push_back(clientFd);
         return false;
     }
-
-    string res = prefix + string(message.data(), messageSize);
-    messageSize = res.size();
-    message.resize(messageSize);
-    copy(res.begin(), res.end(), message.begin());
-   // message[res.size()] = '\0';
-
     return true;
 }
 
-ssize_t Server::sendMessage(int clientFd, const std::string& message) const {
-    size_t messageSize = message.size();
-    return send(clientFd, static_cast<const void*>(message.data()), messageSize + 1, 0);
+void Server::handleClientDisconnect(int clientFd) {
+    scoped_lock lock(activeClientMutex, clientCloseMutex);
+    auto clientIt = activeClients.find(clientFd);
+    if (clientIt == activeClients.end()) {
+        return;
+    }
+    auto groupIt = groups.find(clientIt->second.groupName);
+    if (groupIt != groups.end()) {
+        groupIt->second.users.erase(clientIt->first);
+        if (groupIt->second.users.empty()) {
+            groups.erase(groupIt);
+        }
+    }
+    clientsToClose.insert(activeClients.extract(clientIt));
 }
+
+ std::string Server::parseCommand(const string& message, int clientFd) {
+     string answer = "";
+     auto clientIt = activeClients.find(clientFd);
+
+     if (clientIt == activeClients.end()) {
+         return "";
+     }
+
+     string currentUserGroup = clientIt->second.groupName;
+
+     if (message.find("/LSGRP") == 0) {
+         if (groups.empty()) {
+             return "Currently there are no active groups.\n";
+         }
+
+         for (const auto &group : groups) {
+             answer += group.second.groupName;
+             if (!group.second.password.empty()) {
+                 answer += u8" \U0001F512";
+             }
+             answer += "\n";
+         }
+     }
+
+     else if (message.find("/NEWGRP") == 0) {
+         vector<string> words = StringUtils::parseString(message);
+         string groupName = "";
+         string groupPasswd = "";
+
+         switch (words.size()) {
+         case 3:
+             groupPasswd = words[2];
+         case 2:
+             groupName = words[1];
+             break;
+         default:
+             return "Cannot make a group with provided arguments.\n";
+         }
+
+         Group newGroup = {{}, groupName, groupPasswd};
+         auto result = groups.emplace(groupName, newGroup);
+         if (result.second) {
+             answer = "Made a new group. Name: " + groupName + ", password: " + groupPasswd + ".\n";
+         }
+         else {
+             answer = "Group already exists.\n";
+         }
+     }
+
+     else if (message.find("/JOINGRP") == 0) {
+         if (!currentUserGroup.empty()) {
+             return "You are already in a group. Leave it first, to join another group.\n";
+         }
+
+         vector<string> words = StringUtils::parseString(message);
+         string requestedGroupName = "";
+         string sentGroupPasswd = "";
+
+         switch (words.size()) {
+         case 3:
+             sentGroupPasswd = words[2];
+         case 2:
+             requestedGroupName = words[1];
+             break;
+         default:
+             return "Cannot join a group with provided arguments.\n";
+         }
+
+         auto requestedGroupIt = groups.find(requestedGroupName);
+
+         if (requestedGroupIt == groups.end()) {
+             return "Group not found\n";
+         }
+
+         if (requestedGroupIt->second.password == sentGroupPasswd) {
+             requestedGroupIt->second.users.emplace(clientFd, activeClients[clientFd]);
+             clientIt->second.groupName = requestedGroupName;
+             answer = "Joined " + requestedGroupName + "\n";
+         }
+         else {
+             answer = "Wrong password\n";
+         }
+     }
+
+     else if (message.find("/LEAVEGRP") == 0) {
+         auto it = groups.find(currentUserGroup);
+         if (it == groups.end()) {
+             return "You are not currently in a group.\n";
+         }
+
+         it->second.users.erase(clientFd);
+         answer = "Left " + currentUserGroup + "\n";
+
+         if (it->second.users.empty()) {
+             groups.erase(currentUserGroup);
+             answer += "Last user left, group destroyed\n";
+         }
+         clientIt->second.groupName.clear();
+     }
+
+     else {
+         answer = "Incorrect command.\n";
+     }
+     return answer;
+ }

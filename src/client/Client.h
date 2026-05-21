@@ -1,9 +1,9 @@
 #pragma once
 
+#include <StopReason.h>
+
 #include <string>
 #include <atomic>
-
-constexpr int BUFFER_SIZE = 4096;
 
 class Client {
     private:
@@ -11,9 +11,13 @@ class Client {
 
         std::atomic<bool> running;
 
+        StopReason stopReason;
+
+        void printStopMessage() const;
+
     public:
         Client ();
         ~Client () {};
         int start (char* serverIP, int port, std::string nickname);
-        void stop ();
+        bool stop (StopReason reason);
 };

@@ -6,6 +6,11 @@ add_executable(client
     Client.h
 )
 
+target_link_libraries(client
+    PRIVATE
+    shared
+)
+
 target_include_directories(client
     PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
