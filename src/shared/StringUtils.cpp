@@ -15,6 +15,18 @@ vector<string> StringUtils::parseString(const string& src) {
     return words;
 }
 
+vector<string> StringUtils::splitString(const string& src, char separator) {
+    istringstream stream(src);
+    vector<string> parts;
+    string part;
+
+    while (getline(stream, part, separator)) {
+        parts.push_back(part);
+    }
+
+    return parts;
+}
+
 bool StringUtils::prependString(string& src, const string& prefix, size_t maxLength) {
     if (prefix.size() + src.size() > maxLength) {
         return false;

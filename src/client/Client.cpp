@@ -3,8 +3,10 @@
 
 #include <SocketAdapter.h>
 #include <StringUtils.h>
+#include <consts.h>
 
 #include <iostream>
+#include <string>
 #include <thread>
 
 #include <cstring>
@@ -13,6 +15,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <vector>
 
 using namespace std;
 
@@ -82,7 +85,16 @@ int Client::start (char* serverIP, int port, string nickname) {
             break;
         }
         string currentMessage = StringUtils::bytesToString(result.payload);
-        cout << currentMessage << endl;
+        vector<string> messageParsed = StringUtils::splitString(currentMessage, MESSAGE_SEPARATOR);
+        if (messageParsed.size() > 2) {
+            verboseStop(StopReason::ProtocolError);
+        }
+        else if (messageParsed.size() > 1) {
+            cout << messageParsed[0] << ": " << messageParsed[1] << endl;
+        }
+        else {
+            cout << messageParsed[0] << endl;
+        }
     }
 
     cout << "\nPress enter to exit the application..." << endl;
