@@ -1,4 +1,5 @@
 #include "Client.h"
+#include "UiManager.h"
 
 #include <StopReason.h>
 
@@ -11,10 +12,15 @@
 using namespace std;
 
 static Client* clientInstance = nullptr; // ptr for signal handling, can not be not global
+static ftxui::UiManager* uiInstance = nullptr; // ptr for signal handling, can not be not global
 
 void stopSignalHandler(int signum) {
     if (clientInstance != nullptr) {
         clientInstance->stop(StopReason::LocalUser);
+        clientInstance->joinThreads();
+    }
+    if (uiInstance != nullptr) {
+        uiInstance->stop();
     }
 }
 
@@ -25,6 +31,8 @@ string getHelpMsg() {
 int main(int argc, char *argv[]) {
     Client client;
     clientInstance = &client;
+    ftxui::UiManager manager(*clientInstance);
+    uiInstance = &manager;
 
     signal(SIGINT, stopSignalHandler);
 
@@ -43,7 +51,7 @@ int main(int argc, char *argv[]) {
     if (argc == 4) {
         serverIP = argv[1];
         port = atoi(argv[2]);
-        if (!strcmp(argv[3], "")) {
+        if ((!strcmp(argv[3], "")) || (strchr(argv[3], '\x1F') != nullptr)) {
             cout << "Invalid nickname." << endl;
             return -1;
         }
@@ -54,7 +62,28 @@ int main(int argc, char *argv[]) {
         return 0;
     }
 
+    clientInstance->setUserMessageCallback(
+        [&](std::string author, std::string body) {
+            manager.postUserMessage(std::move(author), std::move(body));
+        }
+    );
+
+    clientInstance->setSystemMessageCallback(
+        [&](std::string body) {
+            manager.postSystemMessage(std::move(body));
+        }
+    );
+
     int errCode = clientInstance->start(serverIP, port, nickname);
+    if (errCode) {
+        return errCode;
+    }
+
+    manager.run();
+
+    client.stop(StopReason::LocalUser);
+    manager.stop();
+    client.joinThreads();
 
     return errCode;
 }

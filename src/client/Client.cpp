@@ -6,8 +6,8 @@
 #include <consts.h>
 
 #include <iostream>
-#include <string>
 #include <thread>
+#include <vector>
 
 #include <cstring>
 
@@ -15,7 +15,6 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
-#include <vector>
 
 using namespace std;
 
@@ -24,7 +23,7 @@ Client::Client () {
     sock = -1;
 }
 
-int Client::start (char* serverIP, int port, string nickname) {
+int Client::start(char* serverIP, int port, string nickname) {
     sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock == -1) {
         perror("Socket failed");
@@ -46,60 +45,16 @@ int Client::start (char* serverIP, int port, string nickname) {
         return -3;
     }
 
-    auto verboseStop = [this](StopReason reason){
-        if(stop(reason)) {
-            printStopMessage();
-        }
-    };
-
     StopReason result = SocketAdapter::sendMessage(sock, StringUtils::stringToBytes(nickname));
     if (result != StopReason::None) {
         verboseStop(result);
         return -4;
     }
 
-    thread inputThread = thread([&]{
-        string message = "";
-        while(running) {
-            getline(cin, message, '\n');
-            if (cin.eof()) {
-                break;
-            }
-            if (message.empty()) {
-                continue;
-            }
-            StopReason result = SocketAdapter::sendMessage(sock, StringUtils::stringToBytes(message));
-            if (result != StopReason::None) {
-                verboseStop(result);
-                break;
-            }
-        }
-    });
+    outputThread = thread(&Client::sendLoop, this);
+    recieveThread = thread(&Client::recieveLoop, this);
 
-    cout <<  "\033[0;37mYou can list existing groups by typing /LSGRP\nYou can make a new group by typing /NEWGRP group_name password\nYou can join an existing group by typing /JOINGRP group_name password\nYou can leave a group by typing /LEAVEGRP \033[0m \n" << endl;
-
-    while (running) {
-        ReceiveResult result = SocketAdapter::receiveMessage(sock);
-        if (result.stopReason != StopReason::None) {
-            verboseStop(result.stopReason);
-            break;
-        }
-        string currentMessage = StringUtils::bytesToString(result.payload);
-        vector<string> messageParsed = StringUtils::splitString(currentMessage, MESSAGE_SEPARATOR);
-        if (messageParsed.size() > 2) {
-            verboseStop(StopReason::ProtocolError);
-        }
-        else if (messageParsed.size() > 1) {
-            cout << messageParsed[0] << ": " << messageParsed[1] << endl;
-        }
-        else {
-            cout << messageParsed[0] << endl;
-        }
-    }
-
-    cout << "\nPress enter to exit the application..." << endl;
-
-    inputThread.join();
+    //cout << "\nPress enter to exit the application..." << endl;
 
     return 0;
 }
@@ -111,6 +66,7 @@ bool Client::stop(StopReason reason) {
     }
 
     stopReason = reason;
+    outgoingCv.notify_all();
 
     if (sock >= 0) {
         shutdown(sock, SHUT_RDWR);
@@ -119,7 +75,39 @@ bool Client::stop(StopReason reason) {
     return true;
 }
 
- void Client::printStopMessage() const {
+void Client::joinThreads() {
+    if (outputThread.joinable()) {
+        outputThread.join();
+    }
+
+    if (recieveThread.joinable()) {
+        recieveThread.join();
+    }
+}
+
+void Client::queueMessage(std::string message) {
+    {
+        std::lock_guard<std::mutex> lock(outgoingMutex);
+        outgoingMessages.push(std::move(message));
+    }
+
+    outgoingCv.notify_one();
+}
+
+void Client::setUserMessageCallback(UserMessageCallback callback) {
+    onUserMessage = callback;
+}
+
+void Client::setSystemMessageCallback(SystemMessageCallback callback) {
+    onSystemMessage = callback;
+}
+
+void Client::verboseStop(StopReason stopReason) {
+    stop(stopReason);
+    printStopMessage();
+}
+
+void Client::printStopMessage() const {
      switch (stopReason) {
         case StopReason::None:
         case StopReason::LocalUser:
@@ -140,5 +128,51 @@ bool Client::stop(StopReason reason) {
         case StopReason::PeerClosed:
             cout << "\nServer shut down." << endl;
             break;
+     }
+ }
+
+ void Client::sendLoop() {
+    while (running) {
+        std::string message;
+        std::unique_lock<std::mutex> lock(outgoingMutex);
+
+        outgoingCv.wait(lock, [&] {
+            return !running || !outgoingMessages.empty();
+        });
+        if (!running && outgoingMessages.empty()) {
+            break;
+        }
+
+        message = std::move(outgoingMessages.front());
+        outgoingMessages.pop();
+
+        lock.unlock();
+
+        StopReason result = SocketAdapter::sendMessage(sock, StringUtils::stringToBytes(message));
+        if (result != StopReason::None) {
+            stop(result);
+            break;
+        }
+    }
+ }
+
+ void Client::recieveLoop() {
+     while (running) {
+         ReceiveResult result = SocketAdapter::receiveMessage(sock);
+         if (result.stopReason != StopReason::None) {
+             verboseStop(result.stopReason);
+             break;
+         }
+         string currentMessage = StringUtils::bytesToString(result.payload);
+         vector<string> messageParsed = StringUtils::splitString(currentMessage, MESSAGE_SEPARATOR);
+         if (messageParsed.size() > 2) {
+             verboseStop(StopReason::ProtocolError);
+         }
+         else if (messageParsed.size() > 1) {
+             onUserMessage(messageParsed[0], messageParsed[1]);
+         }
+         else {
+             onSystemMessage(messageParsed[0]);
+         }
      }
  }
