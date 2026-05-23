@@ -7,7 +7,7 @@
 
 class StringUtils {
     public:
-        using WidthFunction = std::function<int(std::string&)>;
+        using WidthFunction = std::function<int(const std::string&)>;
         using SplitFunction = std::function<std::vector<std::string>(const std::string&)>;
 
         StringUtils() = default;

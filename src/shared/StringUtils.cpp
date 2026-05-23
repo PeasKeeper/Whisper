@@ -53,7 +53,7 @@ bool StringUtils::isSpace(char character) {
            character == '\r';
 }
 
-std::string StringUtils::wrapText(
+string StringUtils::wrapText(
     const string& text,
     int maxWidth,
     WidthFunction widthFn,
@@ -65,7 +65,7 @@ std::string StringUtils::wrapText(
     string output;
     int lineWidth = 0;
 
-    auto appendLongWord = [&](const std::string& word) {
+    auto appendLongWord = [&](const string& word) {
         if (lineWidth > 0) {
             output += '\n';
             lineWidth = 0;
@@ -108,7 +108,7 @@ std::string StringUtils::wrapText(
         while (index < text.size() && isSpace(text[index])) {
             ++index;
         }
-        const std::size_t wordStart = index;
+        const size_t wordStart = index;
         while (index < text.size() && !isSpace(text[index])) {
             ++index;
         }
