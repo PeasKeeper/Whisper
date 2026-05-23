@@ -24,11 +24,11 @@ class Client {
         std::mutex outgoingMutex;
         std::condition_variable outgoingCv;
 
-        std::thread outputThread;
-        std::thread recieveThread;
+        std::thread sendThread;
+        std::thread receiveThread;
 
         void sendLoop();
-        void recieveLoop();
+        void receiveLoop();
 
         using UserMessageCallback =
             std::function<void(const std::string&, const std::string&)>;

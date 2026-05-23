@@ -1,14 +1,34 @@
 #include "UiManager.h"
 
+#include <StringUtils.h>
+
+#include <algorithm>
+
 #include <ftxui/component/app.hpp>
+#include <ftxui/dom/elements.hpp>
 #include <ftxui/screen/color.hpp>
 
 namespace ftxui {
 
 namespace {
 
-int MaxInputWidth() {
-    return std::max(10, Terminal::Size().dimx - 5);
+int MaxBubbleWidth() {
+    const int terminalWidth = Terminal::Size().dimx;
+    // outer app border: 2
+    // history frame: 2
+    // scroll indicator: ~ 1
+    // some additional space: 2
+    const int availableWidth = std::max(1, terminalWidth - 7);
+
+    if (availableWidth < 16) {
+        return availableWidth;
+    }
+
+    return std::clamp(availableWidth / 2, 16, 42);
+}
+
+int MaxSystemMessageWidth() {
+    return std::max(1, Terminal::Size().dimx - 10);
 }
 
 } // namespace
@@ -161,21 +181,48 @@ Element UiManager::Bubble(const Message& message, int maxWidth) {
     }
 
     if (message.type == MessageType::System) {
+        const int systemWidth = MaxSystemMessageWidth();
+
+        auto widthFn = [](const std::string& text) {
+            return string_width(text);
+        };
+
+        auto splitFn = [](const std::string& text) {
+            return Utf8ToGlyphs(text);
+        };
+
+        Element systemMessage =
+            paragraph(StringUtils::wrapText(message.body, systemWidth, widthFn, splitFn)) |
+            color(Color::GrayDark) |
+            size(WIDTH, LESS_THAN, systemWidth);
+
         return hbox({
             filler(),
-            text(message.body) | color(Color::GrayDark),
+            systemMessage,
             filler()
         });
     }
 
+    auto widthFn = [](const std::string& text) {
+        return string_width(text);
+    };
+
+    auto splitFn = [](const std::string& text) {
+        return Utf8ToGlyphs(text);
+    };
+
     Element content = vbox({
-        text(message.author) | bold | flex,
-        separator() | flex,
-        paragraph(message.body) | flex,
+        text(message.author) | bold,
+        separator(),
+        paragraph(StringUtils::wrapText(message.body, maxWidth - 2, widthFn, splitFn)),
     });
 
-    Element bubble = content | size(WIDTH, LESS_THAN, maxWidth) |
-                               borderStyled(LIGHT, borderColor);
+    const int minBubbleWidth = std::min(8, maxWidth);
+
+    Element bubble = content |
+                     size(WIDTH, GREATER_THAN, minBubbleWidth) |
+                     size(WIDTH, LESS_THAN, maxWidth) |
+                     borderStyled(LIGHT, borderColor);
 
     if (message.type == MessageType::Own) {
         return hbox({filler(), bubble});
@@ -205,7 +252,7 @@ Component UiManager::getHistory(float& scrollY) {
 
         for (const Message& message : messageHistory) {
             rows.push_back(
-                Bubble(message, MaxInputWidth())
+                Bubble(message, MaxBubbleWidth()) | xflex
             );
         }
 

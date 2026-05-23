@@ -51,8 +51,8 @@ int Client::start(char* serverIP, int port, string nickname) {
         return -4;
     }
 
-    outputThread = thread(&Client::sendLoop, this);
-    recieveThread = thread(&Client::recieveLoop, this);
+    sendThread = thread(&Client::sendLoop, this);
+    receiveThread = thread(&Client::receiveLoop, this);
 
     //cout << "\nPress enter to exit the application..." << endl;
 
@@ -76,12 +76,12 @@ bool Client::stop(StopReason reason) {
 }
 
 void Client::joinThreads() {
-    if (outputThread.joinable()) {
-        outputThread.join();
+    if (sendThread.joinable()) {
+        sendThread.join();
     }
 
-    if (recieveThread.joinable()) {
-        recieveThread.join();
+    if (receiveThread.joinable()) {
+        receiveThread.join();
     }
 }
 
@@ -156,7 +156,7 @@ void Client::printStopMessage() const {
     }
  }
 
- void Client::recieveLoop() {
+ void Client::receiveLoop() {
      while (running) {
          ReceiveResult result = SocketAdapter::receiveMessage(sock);
          if (result.stopReason != StopReason::None) {

@@ -1,4 +1,4 @@
-# pragma once
+#pragma once
 
 #include "Client.h"
 
@@ -24,7 +24,7 @@ class UiManager {
         struct Message {
             std::string author;
             std::string body;
-             MessageType type;
+            MessageType type;
         };
 
         std::vector<Message> messageHistory;
