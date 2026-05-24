@@ -1,0 +1,11 @@
+function(ftxui_message msg)
+  if (NOT FTXUI_QUIET)
+    message(STATUS "${msg}")
+  endif()
+endfunction()
+
+ftxui_message("┌─ FTXUI ${PROJECT_VERSION} ────────────────────────")
+ftxui_message("│ FTXUI_BUILD_MODULES      : ${FTXUI_BUILD_MODULES}")
+ftxui_message("│ FTXUI_DEV_WARNINGS       : ${FTXUI_DEV_WARNINGS}")
+ftxui_message("│ FTXUI_QUIET              : ${FTXUI_QUIET}")
+ftxui_message("└─────────────────────────────────────")

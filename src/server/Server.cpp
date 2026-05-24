@@ -159,7 +159,7 @@ void Server::handleClient (const int clientFd) {
             continue;
         }
 
-        if (!StringUtils::prependString(currentMessage, clientIt->second.nickname + ": ", MAX_FRAME_SIZE)) {
+        if (!StringUtils::prependString(currentMessage, clientIt->second.nickname + MESSAGE_SEPARATOR, MAX_FRAME_SIZE)) {
             if (!sendOrMarkBroken(clientFd, "Message is too long.\n", brokenClients)) break;
             continue;
         }

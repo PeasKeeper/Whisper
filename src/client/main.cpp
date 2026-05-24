@@ -1,4 +1,4 @@
-#include "Client.h"
+#include "AppManager.h"
 
 #include <StopReason.h>
 
@@ -10,11 +10,13 @@
 
 using namespace std;
 
-static Client* clientInstance = nullptr; // ptr for signal handling, can not be not global
+namespace {
+
+static AppManager* appInstance = nullptr;
 
 void stopSignalHandler(int signum) {
-    if (clientInstance != nullptr) {
-        clientInstance->stop(StopReason::LocalUser);
+    if (appInstance != nullptr) {
+        appInstance->requestStop(StopReason::LocalUser);
     }
 }
 
@@ -22,16 +24,15 @@ string getHelpMsg() {
     return "Usage:\n  client IP PORT Nickname\n    Connect to the server at the specified IP address and port using Nickname.\n  client --help\n    Show this help message.\n";
 }
 
-int main(int argc, char *argv[]) {
-    Client client;
-    clientInstance = &client;
+} // namespace
 
+int main(int argc, char *argv[]) {
     signal(SIGINT, stopSignalHandler);
 
     setlocale(LC_ALL, "");
 
     int port = 0;
-    char* serverIP;
+    char* serverIP = nullptr;
     string nickname = "";
 
     if (argc == 2) {
@@ -43,7 +44,7 @@ int main(int argc, char *argv[]) {
     if (argc == 4) {
         serverIP = argv[1];
         port = atoi(argv[2]);
-        if (!strcmp(argv[3], "")) {
+        if ((!strcmp(argv[3], "")) || (strchr(argv[3], '\x1F') != nullptr)) {
             cout << "Invalid nickname." << endl;
             return -1;
         }
@@ -54,7 +55,11 @@ int main(int argc, char *argv[]) {
         return 0;
     }
 
-    int errCode = clientInstance->start(serverIP, port, nickname);
+    AppManager appManager(serverIP, port, nickname);
+    appInstance = &appManager;
+    appManager.run();
+    appManager.finalize();
+    appManager.printStopMessage();
 
-    return errCode;
+    return 0;
 }
