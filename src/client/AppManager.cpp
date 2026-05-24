@@ -1,6 +1,5 @@
 #include "AppManager.h"
 
-#include "SocketAdapter.h"
 #include "StopReason.h"
 #include "UiManager.h"
 
@@ -15,7 +14,7 @@ AppManager::AppManager(char* newServerIp, int newServerPort, std::string newUser
       serverPort(newServerPort),
       userNickname(std::move(newUserNickname)),
       client(*this),
-      uiManager(*this, client)
+      uiManager(*this)
 {
     stopReason = StopReason::None;
     stopRequested = false;
@@ -35,6 +34,10 @@ void AppManager::run() {
 
     client.setSystemMessageCallback([this](std::string body) {
         uiManager.postSystemMessage(std::move(body));
+    });
+
+    uiManager.setSendMessageCallback([this](std::string message) {
+        client.queueMessage(std::move(message));
     });
 
     StopReason reason = client.connectToServer(serverIp, serverPort, userNickname);

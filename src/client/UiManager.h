@@ -1,13 +1,12 @@
 #pragma once
 
-#include "Client.h"
-
 #include <ftxui/component/app.hpp>
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/event.hpp>
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/dom/elements.hpp>
 
+#include <functional>
 #include <string>
 #include <vector>
 #include <mutex>
@@ -19,6 +18,8 @@ namespace ftxui {
 
 class UiManager {
     private:
+        using SendMessageCallback = std::function<void(std::string)>;
+
         enum class MessageType {
             Incoming,
             Own,
@@ -47,17 +48,19 @@ class UiManager {
 
         float historyScrollY;
 
-        Client &clientBackend;
         AppManager &appManager;
+        SendMessageCallback onSendMessage;
 
-        ScreenInteractive *screen;
+        ScreenInteractive screen;
 
     public:
-        UiManager(AppManager &newAppManager, Client& newClient);
+        UiManager(AppManager &newAppManager);
         ~UiManager() = default;
 
         void run();
         void stop();
+
+        void setSendMessageCallback(SendMessageCallback callback);
 
         void postUserMessage(std::string author, std::string body);
         void postSystemMessage(std::string body);

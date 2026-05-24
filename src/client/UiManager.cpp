@@ -36,13 +36,12 @@ int maxSystemMessageWidth() {
 
 } // namespace
 
-UiManager::UiManager(AppManager &newAppManager, Client& newClient) :
+UiManager::UiManager(AppManager &newAppManager) :
 appManager(newAppManager),
-clientBackend(newClient)
+screen(ScreenInteractive::Fullscreen())
 {
     messageHistory = {};
     historyScrollY = 1.0F;
-    screen = nullptr;
 }
 
 void UiManager::run() {
@@ -107,7 +106,9 @@ void UiManager::run() {
                 .body = draft,
                 .type = MessageType::Own
             });
-            clientBackend.queueMessage(draft);
+            if (onSendMessage) {
+                onSendMessage(draft);
+            }
             draft.clear();
             draftCursor = 0;
             historyScrollY = 1.0F;
@@ -147,19 +148,16 @@ void UiManager::run() {
         return false;
     });
 
-    auto localScreen = ScreenInteractive::Fullscreen();
-    screen = &localScreen;
-
-    localScreen.TrackMouse(true);
-    localScreen.Loop(app);
-
-    screen = nullptr;
+    screen.TrackMouse(true);
+    screen.Loop(app);
 }
 
 void UiManager::stop() {
-    if (screen != nullptr) {
-        screen->Exit();
-    }
+    screen.Exit();
+}
+
+void UiManager::setSendMessageCallback(SendMessageCallback callback) {
+    onSendMessage = std::move(callback);
 }
 
 void UiManager::postUserMessage(std::string author, std::string body) {
@@ -170,9 +168,7 @@ void UiManager::postUserMessage(std::string author, std::string body) {
         .type = MessageType::Incoming
     });
     lock.unlock();
-    if (screen != nullptr) {
-        screen->PostEvent(Event::Custom);
-    }
+    screen.PostEvent(Event::Custom);
 }
 
 void UiManager::postSystemMessage(std::string body) {
@@ -183,9 +179,7 @@ void UiManager::postSystemMessage(std::string body) {
         .type = MessageType::System
     });
     lock.unlock();
-    if (screen != nullptr) {
-        screen->PostEvent(Event::Custom);
-    }
+    screen.PostEvent(Event::Custom);
 }
 
 Element UiManager::renderMessageRow(const Message& message, int maxWidth) {
