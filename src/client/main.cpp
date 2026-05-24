@@ -1,5 +1,4 @@
-#include "Client.h"
-#include "UiManager.h"
+#include "AppManager.h"
 
 #include <StopReason.h>
 
@@ -11,16 +10,13 @@
 
 using namespace std;
 
-static Client* clientInstance = nullptr; // ptr for signal handling, can not be not global
-static ftxui::UiManager* uiInstance = nullptr; // ptr for signal handling, can not be not global
+namespace {
+
+static AppManager* appInstance = nullptr;
 
 void stopSignalHandler(int signum) {
-    if (uiInstance != nullptr) {
-        uiInstance->stop();
-    }
-    if (clientInstance != nullptr) {
-        clientInstance->stop(StopReason::LocalUser);
-        clientInstance->joinThreads();
+    if (appInstance != nullptr) {
+        appInstance->requestStop(StopReason::LocalUser);
     }
 }
 
@@ -28,12 +24,9 @@ string getHelpMsg() {
     return "Usage:\n  client IP PORT Nickname\n    Connect to the server at the specified IP address and port using Nickname.\n  client --help\n    Show this help message.\n";
 }
 
-int main(int argc, char *argv[]) {
-    Client client;
-    clientInstance = &client;
-    ftxui::UiManager manager(*clientInstance);
-    uiInstance = &manager;
+} // namespace
 
+int main(int argc, char *argv[]) {
     signal(SIGINT, stopSignalHandler);
 
     setlocale(LC_ALL, "");
@@ -62,34 +55,11 @@ int main(int argc, char *argv[]) {
         return 0;
     }
 
-    clientInstance->setUserMessageCallback(
-        [&](std::string author, std::string body) {
-            manager.postUserMessage(std::move(author), std::move(body));
-        }
-    );
+    AppManager appManager(serverIP, port, nickname);
+    appInstance = &appManager;
+    appManager.run();
+    appManager.finalize();
+    appManager.printStopMessage();
 
-    clientInstance->setSystemMessageCallback(
-        [&](std::string body) {
-            manager.postSystemMessage(std::move(body));
-        }
-    );
-
-    clientInstance->setStopCallback(
-        [&]() {
-            manager.stop();
-        }
-    );
-
-    int errCode = clientInstance->start(serverIP, port, nickname);
-    if (errCode) {
-        return errCode;
-    }
-
-    manager.run();
-
-    client.stop(StopReason::LocalUser);
-    manager.stop();
-    client.joinThreads();
-
-    return errCode;
+    return 0;
 }

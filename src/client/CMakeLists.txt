@@ -6,6 +6,8 @@ add_executable(client
     Client.h
     UiManager.cpp
     UiManager.h
+    AppManager.cpp
+    AppManager.h
 )
 
 target_link_libraries(client

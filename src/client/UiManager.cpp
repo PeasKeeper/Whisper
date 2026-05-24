@@ -1,4 +1,5 @@
 #include "UiManager.h"
+#include "AppManager.h"
 
 #include <StringUtils.h>
 
@@ -35,7 +36,10 @@ int maxSystemMessageWidth() {
 
 } // namespace
 
-UiManager::UiManager(Client& newClient) : clientBackend(newClient) {
+UiManager::UiManager(AppManager &newAppManager, Client& newClient) :
+appManager(newAppManager),
+clientBackend(newClient)
+{
     messageHistory = {};
     historyScrollY = 1.0F;
     screen = nullptr;

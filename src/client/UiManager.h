@@ -13,6 +13,8 @@
 #include <mutex>
 #include <queue>
 
+class AppManager;
+
 namespace ftxui {
 
 class UiManager {
@@ -46,11 +48,12 @@ class UiManager {
         float historyScrollY;
 
         Client &clientBackend;
+        AppManager &appManager;
 
         ScreenInteractive *screen;
 
     public:
-        UiManager(Client& newClient);
+        UiManager(AppManager &newAppManager, Client& newClient);
         ~UiManager() = default;
 
         void run();

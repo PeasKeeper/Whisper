@@ -1,11 +1,12 @@
 #include "Client.h"
+#include "AppManager.h"
 #include "StopReason.h"
 
 #include <SocketAdapter.h>
 #include <StringUtils.h>
 #include <consts.h>
 
-#include <iostream>
+#include <mutex>
 #include <thread>
 #include <vector>
 
@@ -18,21 +19,20 @@
 
 using namespace std;
 
-Client::Client () {
+Client::Client (AppManager &newAppManager) : appManager(newAppManager) {
     running = true;
     sock = -1;
 }
 
 Client::~Client () {
-    stop(StopReason::LocalUser);
+    stop();
     joinThreads();
 }
 
-int Client::start(char* serverIP, int port, string nickname) {
+StopReason Client::connectToServer(char* serverIP, int port, std::string nickname) {
     sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock == -1) {
-        perror("Socket failed");
-        return -1;
+        return StopReason::NetworkError;
     }
 
     sockaddr_in server_addr;
@@ -41,36 +41,31 @@ int Client::start(char* serverIP, int port, string nickname) {
     server_addr.sin_port = htons(port);
 
     if (inet_pton(AF_INET, serverIP, &server_addr.sin_addr) <= 0) {
-        perror("Socket failed");
-        return -2;
+        return StopReason::NetworkError;
     }
 
     if (connect(sock, (sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-        perror("Connect failed");
-        return -3;
+        return StopReason::NetworkError;
     }
 
     StopReason result = SocketAdapter::sendMessage(sock, StringUtils::stringToBytes(nickname));
     if (result != StopReason::None) {
-        verboseStop(result);
-        return -4;
+        return result;
     }
-
-    sendThread = thread(&Client::sendLoop, this);
-    receiveThread = thread(&Client::receiveLoop, this);
-
-    //cout << "\nPress enter to exit the application..." << endl;
-
-    return 0;
+    return StopReason::None;
 }
 
-bool Client::stop(StopReason reason) {
+void Client::run() {
+    sendThread = thread(&Client::sendLoop, this);
+    receiveThread = thread(&Client::receiveLoop, this);
+}
+
+bool Client::stop() {
     bool wasRunning = running.exchange(false);
     if (!wasRunning) {
         return false;
     }
 
-    stopReason = reason;
     outgoingCv.notify_all();
 
     if (sock >= 0) {
@@ -92,10 +87,9 @@ void Client::joinThreads() {
 }
 
 void Client::queueMessage(std::string message) {
-    {
-        std::lock_guard<std::mutex> lock(outgoingMutex);
-        outgoingMessages.push(std::move(message));
-    }
+    std::unique_lock<std::mutex> lock(outgoingMutex);
+    outgoingMessages.push(std::move(message));
+    lock.unlock();
 
     outgoingCv.notify_one();
 }
@@ -107,42 +101,6 @@ void Client::setUserMessageCallback(UserMessageCallback callback) {
 void Client::setSystemMessageCallback(SystemMessageCallback callback) {
     onSystemMessage = callback;
 }
-
-void Client::setStopCallback(StopCallback callback) {
-    onStop = callback;
-}
-
-void Client::verboseStop(StopReason stopReason) {
-    stop(stopReason);
-    if (onStop) {
-        onStop();
-    }
-    printStopMessage();
-}
-
-void Client::printStopMessage() const {
-     switch (stopReason) {
-        case StopReason::None:
-        case StopReason::LocalUser:
-            break;
-
-        case StopReason::NetworkError:
-            cout << "\nNetwork error." << endl;
-            break;
-
-        case StopReason::Timeout:
-            cout << "\nConnection timed out." << endl;
-            break;
-
-        case StopReason::ProtocolError:
-            cout << "\nReceived invalid message." << endl;
-            break;
-
-        case StopReason::PeerClosed:
-            cout << "\nServer shut down." << endl;
-            break;
-     }
- }
 
 void Client::sendLoop() {
     while (running) {
@@ -163,7 +121,7 @@ void Client::sendLoop() {
 
         StopReason result = SocketAdapter::sendMessage(sock, StringUtils::stringToBytes(message));
         if (result != StopReason::None) {
-            stop(result);
+            appManager.requestStop(result);
             break;
         }
     }
@@ -173,13 +131,13 @@ void Client::receiveLoop() {
     while (running) {
         ReceiveResult result = SocketAdapter::receiveMessage(sock);
         if (result.stopReason != StopReason::None) {
-            verboseStop(result.stopReason);
+            appManager.requestStop(result.stopReason);
             break;
         }
         string currentMessage = StringUtils::bytesToString(result.payload);
         vector<string> messageParsed = StringUtils::splitString(currentMessage, MESSAGE_SEPARATOR);
         if (messageParsed.size() > 2) {
-            verboseStop(StopReason::ProtocolError);
+            appManager.requestStop(StopReason::ProtocolError);
         }
         else if (messageParsed.size() > 1) {
             if (onUserMessage) {

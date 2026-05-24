@@ -9,18 +9,15 @@
 #include <functional>
 #include <thread>
 
+class AppManager;
+
 class Client {
     private:
         using UserMessageCallback = std::function<void(const std::string&, const std::string&)>;
         using SystemMessageCallback = std::function<void(const std::string&)>;
-        using StopCallback = std::function<void()>;
 
         int sock;
         std::atomic<bool> running;
-        StopReason stopReason;
-
-        void verboseStop(StopReason stopReason);
-        void printStopMessage() const;
 
         std::queue<std::string> outgoingMessages;
         std::mutex outgoingMutex;
@@ -33,19 +30,20 @@ class Client {
 
         UserMessageCallback onUserMessage;
         SystemMessageCallback onSystemMessage;
-        StopCallback onStop;
+
+        AppManager &appManager;
 
     public:
-        Client ();
+        Client (AppManager &newAppManager);
         ~Client ();
 
-        int start (char* serverIP, int port, std::string nickname);
-        bool stop (StopReason reason);
+        StopReason connectToServer(char* serverIP, int port, std::string nickname);
+        void run ();
+        bool stop ();
         void joinThreads();
 
         void queueMessage(std::string message);
 
         void setUserMessageCallback(UserMessageCallback callback);
         void setSystemMessageCallback(SystemMessageCallback callback);
-        void setStopCallback(StopCallback callback);
 };
