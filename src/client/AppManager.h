@@ -16,7 +16,7 @@ class AppManager {
         std::string userNickname;
 
         bool stopRequested;
-        bool fullStopped;
+        bool finalized;
 
         StopReason stopReason;
         std::mutex stopMutex;

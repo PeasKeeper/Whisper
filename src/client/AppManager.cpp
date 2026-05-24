@@ -18,12 +18,12 @@ AppManager::AppManager(char* newServerIp, int newServerPort, std::string newUser
 {
     stopReason = StopReason::None;
     stopRequested = false;
-    fullStopped = false;
+    finalized = false;
     mainThreadId = std::this_thread::get_id();
 }
 
 AppManager::~AppManager() {
-    requestStop(StopReason::LocalUser);
+    stopImpl(StopReason::LocalUser);
     finalize();
 }
 
@@ -59,10 +59,10 @@ void AppManager::finalize() {
     assert(stopRequested);
     assert(std::this_thread::get_id() == mainThreadId);
     std::unique_lock<mutex> lock(stopMutex);
-    if (fullStopped) {
+    if (finalized) {
         return;
     }
-    fullStopped = true;
+    finalized = true;
     lock.unlock();
 
     client.joinThreads();

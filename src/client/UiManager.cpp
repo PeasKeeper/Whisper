@@ -40,8 +40,8 @@ int maxSystemMessageWidth() {
 } // namespace
 
 UiManager::UiManager(AppManager &newAppManager) :
-appManager(newAppManager),
-screen(ScreenInteractive::Fullscreen())
+    appManager(newAppManager),
+    screen(ScreenInteractive::Fullscreen())
 {
     messageHistory = {};
     historyScrollY = 1.0F;
@@ -335,14 +335,10 @@ Element UiManager::renderMessageRow(const Message& message, int maxWidth) {
 Element UiManager::renderEmojiPicker(const std::vector<std::string>& emojiList, int selectedEmoji) {
     Elements rows;
 
-    for (int rowStart = 0;
-         rowStart < static_cast<int>(emojiList.size());
-         rowStart += emojiColumns) {
+    for (int rowStart = 0; rowStart < static_cast<int>(emojiList.size()); rowStart += emojiColumns) {
         Elements cells;
-
         for (int column = 0; column < emojiColumns; ++column) {
             const int index = rowStart + column;
-
             Element item = text(" ") | size(WIDTH, EQUAL, emojiCellWidth);
 
             if (index < static_cast<int>(emojiList.size())) {
@@ -354,15 +350,11 @@ Element UiManager::renderEmojiPicker(const std::vector<std::string>& emojiList, 
                     item = item | inverted;
                 }
             }
-
             cells.push_back(item);
         }
-
         rows.push_back(hbox(cells));
     }
-
     const int pickerWidth = emojiColumns * emojiCellWidth;
-
     return vbox(rows) |
            size(WIDTH, EQUAL, pickerWidth) |
            border;
