@@ -105,7 +105,13 @@ string StringUtils::wrapText(
 
     size_t index = 0;
     while (index < text.size()) {
-        while (index < text.size() && isSpace(text[index])) {
+        if (text[index] == '\n') {
+            output += '\n';
+            lineWidth = 0;
+            ++index;
+            continue;
+        }
+        while (index < text.size() && isSpace(text[index]) && text[index] != '\n') {
             ++index;
         }
         const size_t wordStart = index;
