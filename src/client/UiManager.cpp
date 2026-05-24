@@ -43,8 +43,9 @@ UiManager::UiManager(Client& newClient) : clientBackend(newClient) {
 
 void UiManager::run() {
     std::string draft;
+    int draftCursor = 0;
 
-    auto messageInput = getInput(draft);
+    auto messageInput = getInput(draft, draftCursor);
     auto chatHistory = getHistory(historyScrollY);
 
     messageHistory.push_back({
@@ -61,8 +62,11 @@ void UiManager::run() {
             chatHistory->Render() | flex,
             separator(),
             hbox({
-                text("> "),
-                messageInput->Render() | flex,
+                text("> ") | color(Color::GrayLight),
+                messageInput->Render() |
+                    yframe |
+                    size(HEIGHT, LESS_THAN, 5) |
+                    flex,
             }),
         }) | border;
     });
@@ -70,6 +74,18 @@ void UiManager::run() {
     app = CatchEvent(app, [&](Event event) {
         if (event == Event::Custom) {
             processPendingMessages();
+            return true;
+        }
+
+        if (event == Event::CtrlN) {
+            draftCursor = std::clamp(
+                draftCursor,
+                0,
+                static_cast<int>(draft.size())
+            );
+
+            draft.insert(static_cast<std::size_t>(draftCursor), "\n");
+            ++draftCursor;
             return true;
         }
 
@@ -89,6 +105,7 @@ void UiManager::run() {
             });
             clientBackend.queueMessage(draft);
             draft.clear();
+            draftCursor = 0;
             historyScrollY = 1.0F;
             return true;
         }
@@ -231,9 +248,10 @@ Element UiManager::renderMessageRow(const Message& message, int maxWidth) {
     return hbox({bubble, filler()});
 }
 
-Component UiManager::getInput(std::string& draft) {
+Component UiManager::getInput(std::string& draft, int& draftCursor) {
     InputOption inputOptions;
     inputOptions.multiline = true;
+    inputOptions.cursor_position = &draftCursor;
     inputOptions.transform = [](InputState state) {
         if (state.is_placeholder) {
             state.element |= dim;

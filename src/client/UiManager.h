@@ -33,7 +33,7 @@ class UiManager {
 
         Element renderMessageRow(const Message& message, int maxWidth);
 
-        Component getInput(std::string& draft);
+        Component getInput(std::string& draft, int& draftCursor);
         Component getHistory(float& scrollY);
 
         bool addUserMessage(const std::string& author, const std::string& body);
