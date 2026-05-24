@@ -15,6 +15,9 @@ namespace ftxui {
 
 namespace {
 
+constexpr int emojiColumns = 5;
+constexpr int emojiCellWidth = 6;
+
 int maxBubbleWidth() {
     const int terminalWidth = Terminal::Size().dimx;
     // outer app border: 2
@@ -48,6 +51,22 @@ void UiManager::run() {
     std::string draft;
     int draftCursor = 0;
 
+    bool emojiPickerOpen = false;
+    int selectedEmoji = 0;
+
+    const std::vector<std::string> emojiList = {
+        "🙂", "😀", "😄", "😂", "😊",
+        "🙃", "🙁", "😢", "😡", "😴",
+        "🤔", "😎", "😇", "😅", "😬",
+
+        "👍", "👎", "👏", "🙏", "💪",
+        "👀", "💬", "💤", "💢", "💫",
+        "💖", "💔", "💙", "💚", "💜",
+
+        "🔥", "🎉", "🎯", "☕", "🍕",
+        "🍺", "🍀", "🌚", "🌙", "🔒"
+    };
+
     auto messageInput = getInput(draft, draftCursor);
     auto chatHistory = getHistory(historyScrollY);
 
@@ -61,16 +80,29 @@ void UiManager::run() {
     });
 
     auto app = Renderer(messageInput, [&] {
+        Element inputRow = hbox({
+            text("> ") | color(Color::GrayLight),
+            messageInput->Render() |
+                yframe |
+                size(HEIGHT, LESS_THAN, 5) |
+                flex,
+        });
+
+        if (emojiPickerOpen) {
+            return vbox({
+                chatHistory->Render() | flex,
+                hbox({
+                    renderEmojiPicker(emojiList, selectedEmoji)
+                }),
+                separator(),
+                inputRow,
+            }) | border;
+        }
+
         return vbox({
             chatHistory->Render() | flex,
             separator(),
-            hbox({
-                text("> ") | color(Color::GrayLight),
-                messageInput->Render() |
-                    yframe |
-                    size(HEIGHT, LESS_THAN, 5) |
-                    flex,
-            }),
+            inputRow,
         }) | border;
     });
 
@@ -78,6 +110,60 @@ void UiManager::run() {
         if (event == Event::Custom) {
             processPendingMessages();
             return true;
+        }
+
+        if (event == Event::CtrlE) {
+            emojiPickerOpen = !emojiPickerOpen;
+            return true;
+        }
+
+        if (emojiPickerOpen) {
+            if (event == Event::Escape) {
+                emojiPickerOpen = false;
+                return true;
+            }
+
+            if (event == Event::ArrowLeft) {
+                selectedEmoji = std::max(0, selectedEmoji - 1);
+                return true;
+            }
+
+            if (event == Event::ArrowRight) {
+                selectedEmoji = std::min(
+                    static_cast<int>(emojiList.size()) - 1,
+                    selectedEmoji + 1
+                );
+                return true;
+            }
+
+            if (event == Event::ArrowUp) {
+                selectedEmoji = std::max(0, selectedEmoji - emojiColumns);
+                return true;
+            }
+
+            if (event == Event::ArrowDown) {
+                selectedEmoji = std::min(
+                    static_cast<int>(emojiList.size()) - 1,
+                    selectedEmoji + emojiColumns
+                );
+                return true;
+            }
+
+            if (event == Event::Return) {
+                const std::string& emoji = emojiList[selectedEmoji];
+
+                draftCursor = std::clamp(
+                    draftCursor,
+                    0,
+                    static_cast<int>(draft.size())
+                );
+
+                draft.insert(static_cast<std::size_t>(draftCursor), emoji);
+                draftCursor += static_cast<int>(emoji.size());
+
+                emojiPickerOpen = false;
+                return true;
+            }
         }
 
         if (event == Event::CtrlN) {
@@ -244,6 +330,42 @@ Element UiManager::renderMessageRow(const Message& message, int maxWidth) {
     }
 
     return hbox({bubble, filler()});
+}
+
+Element UiManager::renderEmojiPicker(const std::vector<std::string>& emojiList, int selectedEmoji) {
+    Elements rows;
+
+    for (int rowStart = 0;
+         rowStart < static_cast<int>(emojiList.size());
+         rowStart += emojiColumns) {
+        Elements cells;
+
+        for (int column = 0; column < emojiColumns; ++column) {
+            const int index = rowStart + column;
+
+            Element item = text(" ") | size(WIDTH, EQUAL, emojiCellWidth);
+
+            if (index < static_cast<int>(emojiList.size())) {
+                item = text(emojiList[index]) |
+                       center |
+                       size(WIDTH, EQUAL, emojiCellWidth);
+
+                if (index == selectedEmoji) {
+                    item = item | inverted;
+                }
+            }
+
+            cells.push_back(item);
+        }
+
+        rows.push_back(hbox(cells));
+    }
+
+    const int pickerWidth = emojiColumns * emojiCellWidth;
+
+    return vbox(rows) |
+           size(WIDTH, EQUAL, pickerWidth) |
+           border;
 }
 
 Component UiManager::getInput(std::string& draft, int& draftCursor) {

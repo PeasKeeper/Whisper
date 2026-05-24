@@ -35,6 +35,7 @@ class UiManager {
         std::vector<Message> messageHistory;
 
         Element renderMessageRow(const Message& message, int maxWidth);
+        Element renderEmojiPicker(const std::vector<std::string>& emojiList, int selectedEmoji);
 
         Component getInput(std::string& draft, int& draftCursor);
         Component getHistory(float& scrollY);
