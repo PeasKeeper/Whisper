@@ -5,14 +5,16 @@
 #include <algorithm>
 
 #include <ftxui/component/app.hpp>
+#include <ftxui/component/mouse.hpp>
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/screen/color.hpp>
+#include <mutex>
 
 namespace ftxui {
 
 namespace {
 
-int MaxBubbleWidth() {
+int maxBubbleWidth() {
     const int terminalWidth = Terminal::Size().dimx;
     // outer app border: 2
     // history frame: 2
@@ -24,10 +26,10 @@ int MaxBubbleWidth() {
         return availableWidth;
     }
 
-    return std::clamp(availableWidth / 2, 16, 42);
+    return std::clamp(availableWidth / 2, 16, 64);
 }
 
-int MaxSystemMessageWidth() {
+int maxSystemMessageWidth() {
     return std::max(1, Terminal::Size().dimx - 10);
 }
 
@@ -35,7 +37,7 @@ int MaxSystemMessageWidth() {
 
 UiManager::UiManager(Client& newClient) : clientBackend(newClient) {
     messageHistory = {};
-    scrollY = 1.0F;
+    historyScrollY = 1.0F;
     screen = nullptr;
 }
 
@@ -43,7 +45,7 @@ void UiManager::run() {
     std::string draft;
 
     auto messageInput = getInput(draft);
-    auto chatHistory = getHistory(scrollY);
+    auto chatHistory = getHistory(historyScrollY);
 
     messageHistory.push_back({
         .author = "",
@@ -67,6 +69,7 @@ void UiManager::run() {
 
     app = CatchEvent(app, [&](Event event) {
         if (event == Event::Custom) {
+            processPendingMessages();
             return true;
         }
 
@@ -86,19 +89,40 @@ void UiManager::run() {
             });
             clientBackend.queueMessage(draft);
             draft.clear();
-            scrollY = 1.0F;
+            historyScrollY = 1.0F;
             return true;
         }
 
         if (event == Event::PageUp) {
-            scrollY += (-0.25F);
+            historyScrollY += (-0.25F);
             return true;
         }
 
         if (event == Event::PageDown) {
-            scrollY += (0.25F);
+            historyScrollY += (0.25F);
             return true;
         }
+
+        if (event == Event::ArrowUp) {
+            historyScrollY += (-0.05F);
+            return true;
+        }
+
+        if (event == Event::ArrowDown) {
+            historyScrollY += (0.05F);
+            return true;
+        }
+
+        if (event.is_mouse() && event.mouse().button == Mouse::WheelUp) {
+            historyScrollY += (-0.05F);
+            return true;
+        }
+
+        if (event.is_mouse() && event.mouse().button == Mouse::WheelDown) {
+            historyScrollY += (0.05F);
+            return true;
+        }
+
         return false;
     });
 
@@ -117,58 +141,33 @@ void UiManager::stop() {
     }
 }
 
-bool UiManager::addUserMessage(const std::string& author, const std::string& body) {
-    if (author.empty() || body.empty()) {
-        return false;
-    }
-
-    if (author.find_first_not_of(" \n\t\r") == std::string::npos ||
-        body.find_first_not_of(" \n\t\r") == std::string::npos) {
-        return false;
-    }
-
-    messageHistory.push_back({
-        .author = author,
-        .body = body,
+void UiManager::postUserMessage(std::string author, std::string body) {
+    std::unique_lock<std::mutex> lock(pendingMessagesMutex);
+    pendingMessages.push({
+        .author = std::move(author),
+        .body = std::move(body),
         .type = MessageType::Incoming
     });
-    scrollY = 1.0F;
-    return true;
-}
-
-bool UiManager::addSystemMessage(const std::string& body) {
-    if (body.empty()) {
-        return false;
-    }
-
-    if (body.find_first_not_of(" \n\t\r") == std::string::npos) {
-        return false;
-    }
-
-    messageHistory.push_back({
-        .author = "",
-        .body = body,
-        .type = MessageType::System
-    });
-    scrollY = 1.0F;
-    return true;
-}
-
-void UiManager::postUserMessage(std::string author, std::string body) {
-    addUserMessage(author, body);
+    lock.unlock();
     if (screen != nullptr) {
         screen->PostEvent(Event::Custom);
     }
 }
 
 void UiManager::postSystemMessage(std::string body) {
-    addSystemMessage(body);
+    std::unique_lock<std::mutex> lock(pendingMessagesMutex);
+    pendingMessages.push({
+        .author = "",
+        .body = std::move(body),
+        .type = MessageType::System
+    });
+    lock.unlock();
     if (screen != nullptr) {
         screen->PostEvent(Event::Custom);
     }
 }
 
-Element UiManager::Bubble(const Message& message, int maxWidth) {
+Element UiManager::renderMessageRow(const Message& message, int maxWidth) {
     Color borderColor;
     if (message.type == MessageType::Own) {
         borderColor = Color::Blue;
@@ -181,7 +180,7 @@ Element UiManager::Bubble(const Message& message, int maxWidth) {
     }
 
     if (message.type == MessageType::System) {
-        const int systemWidth = MaxSystemMessageWidth();
+        const int systemWidth = maxSystemMessageWidth();
 
         auto widthFn = [](const std::string& text) {
             return string_width(text);
@@ -211,10 +210,11 @@ Element UiManager::Bubble(const Message& message, int maxWidth) {
         return Utf8ToGlyphs(text);
     };
 
+    const int bodyWidth = std::max(1, maxWidth - 2);
     Element content = vbox({
         text(message.author) | bold,
         separator(),
-        paragraph(StringUtils::wrapText(message.body, maxWidth - 2, widthFn, splitFn)),
+        paragraph(StringUtils::wrapText(message.body, bodyWidth, widthFn, splitFn)),
     });
 
     const int minBubbleWidth = std::min(8, maxWidth);
@@ -235,11 +235,11 @@ Component UiManager::getInput(std::string& draft) {
     InputOption inputOptions;
     inputOptions.multiline = true;
     inputOptions.transform = [](InputState state) {
-      if (state.is_placeholder) {
-        state.element |= dim;
-      }
+        if (state.is_placeholder) {
+            state.element |= dim;
+        }
 
-      return state.element;
+        return state.element;
     };
 
     auto input = Input(&draft, "Type a message", inputOptions);
@@ -252,7 +252,7 @@ Component UiManager::getHistory(float& scrollY) {
 
         for (const Message& message : messageHistory) {
             rows.push_back(
-                Bubble(message, MaxBubbleWidth()) | xflex
+                renderMessageRow(message, maxBubbleWidth()) | xflex
             );
         }
 
@@ -261,6 +261,61 @@ Component UiManager::getHistory(float& scrollY) {
                vscroll_indicator |
                frame;
     });
+}
+
+bool UiManager::addUserMessage(const std::string& author, const std::string& body) {
+    if (author.empty() || body.empty()) {
+        return false;
+    }
+
+    if (author.find_first_not_of(" \n\t\r") == std::string::npos ||
+        body.find_first_not_of(" \n\t\r") == std::string::npos) {
+        return false;
+    }
+
+    messageHistory.push_back({
+        .author = author,
+        .body = body,
+        .type = MessageType::Incoming
+    });
+    historyScrollY = 1.0F;
+    return true;
+}
+
+bool UiManager::addSystemMessage(const std::string& body) {
+    if (body.empty()) {
+        return false;
+    }
+
+    if (body.find_first_not_of(" \n\t\r") == std::string::npos) {
+        return false;
+    }
+
+    messageHistory.push_back({
+        .author = "",
+        .body = body,
+        .type = MessageType::System
+    });
+    historyScrollY = 1.0F;
+    return true;
+}
+
+void UiManager::processPendingMessages() {
+    std::queue<Message> messages;
+
+    std::unique_lock<std::mutex> lock(pendingMessagesMutex);
+    std::swap(messages, pendingMessages);
+    lock.unlock();
+
+    while (!messages.empty()) {
+        if (messages.front().type == MessageType::Incoming) {
+            addUserMessage(messages.front().author, messages.front().body);
+        }
+        else if (messages.front().type == MessageType::System) {
+            addSystemMessage(messages.front().body);
+        }
+        messages.pop();
+    }
 }
 
 } // namespace ftxui

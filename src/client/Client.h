@@ -11,10 +11,12 @@
 
 class Client {
     private:
+        using UserMessageCallback = std::function<void(const std::string&, const std::string&)>;
+        using SystemMessageCallback = std::function<void(const std::string&)>;
+        using StopCallback = std::function<void()>;
+
         int sock;
-
         std::atomic<bool> running;
-
         StopReason stopReason;
 
         void verboseStop(StopReason stopReason);
@@ -26,22 +28,17 @@ class Client {
 
         std::thread sendThread;
         std::thread receiveThread;
-
         void sendLoop();
         void receiveLoop();
 
-        using UserMessageCallback =
-            std::function<void(const std::string&, const std::string&)>;
-
-        using SystemMessageCallback =
-            std::function<void(const std::string&)>;
-
         UserMessageCallback onUserMessage;
         SystemMessageCallback onSystemMessage;
+        StopCallback onStop;
 
     public:
         Client ();
-        ~Client () {};
+        ~Client ();
+
         int start (char* serverIP, int port, std::string nickname);
         bool stop (StopReason reason);
         void joinThreads();
@@ -50,4 +47,5 @@ class Client {
 
         void setUserMessageCallback(UserMessageCallback callback);
         void setSystemMessageCallback(SystemMessageCallback callback);
+        void setStopCallback(StopCallback callback);
 };

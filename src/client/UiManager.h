@@ -10,6 +10,8 @@
 
 #include <string>
 #include <vector>
+#include <mutex>
+#include <queue>
 
 namespace ftxui {
 
@@ -29,7 +31,7 @@ class UiManager {
 
         std::vector<Message> messageHistory;
 
-        Element Bubble(const Message& message, int maxWidth);
+        Element renderMessageRow(const Message& message, int maxWidth);
 
         Component getInput(std::string& draft);
         Component getHistory(float& scrollY);
@@ -37,7 +39,11 @@ class UiManager {
         bool addUserMessage(const std::string& author, const std::string& body);
         bool addSystemMessage(const std::string& body);
 
-        float scrollY;
+        std::mutex pendingMessagesMutex;
+        std::queue<Message> pendingMessages;
+        void processPendingMessages();
+
+        float historyScrollY;
 
         Client &clientBackend;
 

@@ -23,6 +23,11 @@ Client::Client () {
     sock = -1;
 }
 
+Client::~Client () {
+    stop(StopReason::LocalUser);
+    joinThreads();
+}
+
 int Client::start(char* serverIP, int port, string nickname) {
     sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock == -1) {
@@ -71,6 +76,7 @@ bool Client::stop(StopReason reason) {
     if (sock >= 0) {
         shutdown(sock, SHUT_RDWR);
         close(sock);
+        sock = -1;
     }
     return true;
 }
@@ -102,8 +108,15 @@ void Client::setSystemMessageCallback(SystemMessageCallback callback) {
     onSystemMessage = callback;
 }
 
+void Client::setStopCallback(StopCallback callback) {
+    onStop = callback;
+}
+
 void Client::verboseStop(StopReason stopReason) {
     stop(stopReason);
+    if (onStop) {
+        onStop();
+    }
     printStopMessage();
 }
 
@@ -131,7 +144,7 @@ void Client::printStopMessage() const {
      }
  }
 
- void Client::sendLoop() {
+void Client::sendLoop() {
     while (running) {
         std::string message;
         std::unique_lock<std::mutex> lock(outgoingMutex);
@@ -154,25 +167,29 @@ void Client::printStopMessage() const {
             break;
         }
     }
- }
+}
 
- void Client::receiveLoop() {
-     while (running) {
-         ReceiveResult result = SocketAdapter::receiveMessage(sock);
-         if (result.stopReason != StopReason::None) {
-             verboseStop(result.stopReason);
-             break;
-         }
-         string currentMessage = StringUtils::bytesToString(result.payload);
-         vector<string> messageParsed = StringUtils::splitString(currentMessage, MESSAGE_SEPARATOR);
-         if (messageParsed.size() > 2) {
-             verboseStop(StopReason::ProtocolError);
-         }
-         else if (messageParsed.size() > 1) {
-             onUserMessage(messageParsed[0], messageParsed[1]);
-         }
-         else {
-             onSystemMessage(messageParsed[0]);
-         }
-     }
- }
+void Client::receiveLoop() {
+    while (running) {
+        ReceiveResult result = SocketAdapter::receiveMessage(sock);
+        if (result.stopReason != StopReason::None) {
+            verboseStop(result.stopReason);
+            break;
+        }
+        string currentMessage = StringUtils::bytesToString(result.payload);
+        vector<string> messageParsed = StringUtils::splitString(currentMessage, MESSAGE_SEPARATOR);
+        if (messageParsed.size() > 2) {
+            verboseStop(StopReason::ProtocolError);
+        }
+        else if (messageParsed.size() > 1) {
+            if (onUserMessage) {
+                onUserMessage(messageParsed[0], messageParsed[1]);
+            }
+        }
+        else {
+            if (onSystemMessage) {
+                onSystemMessage(messageParsed[0]);
+            }
+        }
+    }
+}

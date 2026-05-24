@@ -15,12 +15,12 @@ static Client* clientInstance = nullptr; // ptr for signal handling, can not be 
 static ftxui::UiManager* uiInstance = nullptr; // ptr for signal handling, can not be not global
 
 void stopSignalHandler(int signum) {
+    if (uiInstance != nullptr) {
+        uiInstance->stop();
+    }
     if (clientInstance != nullptr) {
         clientInstance->stop(StopReason::LocalUser);
         clientInstance->joinThreads();
-    }
-    if (uiInstance != nullptr) {
-        uiInstance->stop();
     }
 }
 
@@ -39,7 +39,7 @@ int main(int argc, char *argv[]) {
     setlocale(LC_ALL, "");
 
     int port = 0;
-    char* serverIP;
+    char* serverIP = nullptr;
     string nickname = "";
 
     if (argc == 2) {
@@ -71,6 +71,12 @@ int main(int argc, char *argv[]) {
     clientInstance->setSystemMessageCallback(
         [&](std::string body) {
             manager.postSystemMessage(std::move(body));
+        }
+    );
+
+    clientInstance->setStopCallback(
+        [&]() {
+            manager.stop();
         }
     );
 
