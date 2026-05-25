@@ -1,21 +1,12 @@
 #include "Client.h"
 #include "AppManager.h"
-#include "StopReason.h"
 
 #include <SocketAdapter.h>
 #include <StringUtils.h>
 #include <consts.h>
 
 #include <mutex>
-#include <thread>
 #include <vector>
-
-#include <cstring>
-
-#include <unistd.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
 
 using namespace std;
 
@@ -30,25 +21,17 @@ Client::~Client () {
 }
 
 StopReason Client::connectToServer(char* serverIP, int port, std::string nickname) {
-    sock = socket(AF_INET, SOCK_STREAM, 0);
+    sock = SocketAdapter::openSocket();
     if (sock == -1) {
         return StopReason::NetworkError;
     }
 
-    sockaddr_in server_addr;
-    memset(&server_addr, 0, sizeof(server_addr));
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(port);
-
-    if (inet_pton(AF_INET, serverIP, &server_addr.sin_addr) <= 0) {
-        return StopReason::NetworkError;
+    StopReason result = SocketAdapter::connectToAddress(sock, serverIP, port);
+    if (result != StopReason::None) {
+        return result;
     }
 
-    if (connect(sock, (sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-        return StopReason::NetworkError;
-    }
-
-    StopReason result = SocketAdapter::sendMessage(sock, StringUtils::stringToBytes(nickname));
+    result = SocketAdapter::sendMessage(sock, StringUtils::stringToBytes(nickname));
     if (result != StopReason::None) {
         return result;
     }
@@ -69,8 +52,7 @@ bool Client::stop() {
     outgoingCv.notify_all();
 
     if (sock >= 0) {
-        shutdown(sock, SHUT_RDWR);
-        close(sock);
+        SocketAdapter::closeSocket(sock);
         sock = -1;
     }
     return true;

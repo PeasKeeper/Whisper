@@ -9,8 +9,6 @@
 #include <mutex>
 #include <vector>
 
-#include <sys/types.h>
-
 class Server {
     private:
         int serverFd;
