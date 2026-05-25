@@ -1,18 +1,13 @@
 #include "Server.h"
 #include "IPv4Addr.h"
-#include "StopReason.h"
 
+#include <StopReason.h>
 #include <consts.h>
 #include <StringUtils.h>
 #include <SocketAdapter.h>
 
-#include <mutex>
-
-#include <unistd.h>
-#include <arpa/inet.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <vector>
+#include <iostream>
+#include <thread>
 
 using namespace std;
 
@@ -22,34 +17,17 @@ Server::Server () {
 }
 
 int Server::start (int port) {
-    serverFd = socket(AF_INET, SOCK_STREAM, 0);
+    serverFd = SocketAdapter::openSocket();
     if (serverFd == -1) {
         perror("Socket failed");
         return -1;
     }
 
-    sockaddr_in address{};
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(port);
-
-    int opt = 1;
-    if (setsockopt(serverFd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
-        perror("setsockopt failed");
-        close(serverFd);
-        return -4;
-    }
-
-    if (bind(serverFd, (sockaddr*)&address, sizeof(address)) < 0) {
-        perror("Bind failed");
-        close(serverFd);
+    StopReason result = SocketAdapter::listenOnSocket(serverFd, port, LISTEN_BACKLOG);
+    if (result != StopReason::None) {
+        perror("Bind and listen failed");
+        SocketAdapter::closeSocket(serverFd);
         return -2;
-    }
-
-    if (listen(serverFd, 1) < 0) {
-        perror("Listen failed");
-        close(serverFd);
-        return -3;
     }
 
     cout << "Server up on " << getLocalIPv4() << ":" << port << endl;
@@ -57,7 +35,7 @@ int Server::start (int port) {
     while (running) {
         closeClients(clientsToClose, clientCloseMutex);
 
-        int clientFd = accept(serverFd, nullptr, nullptr);
+        int clientFd = SocketAdapter::acceptConnection(serverFd);
 
         if (!running) {
             break;
@@ -89,7 +67,8 @@ int Server::start (int port) {
 void Server::stop () {
     running = false;
     if (serverFd >= 0) {
-        close(serverFd);
+        SocketAdapter::closeSocket(serverFd);
+        serverFd = -1;
     }
     cout << "\nServer shut down" << endl;
 }
@@ -102,8 +81,7 @@ void Server::closeClients (unordered_map<int, ClientData>& clients, mutex& clien
 
         if (!clients.empty()) {
             for (auto &client : clients) {
-                shutdown(client.first, SHUT_RDWR);
-                close(client.first);
+                SocketAdapter::closeSocket(client.first);
                 if (client.second.clientThread.joinable()) {
                     threadsToJoin.push_back(std::move(client.second.clientThread));
                 }

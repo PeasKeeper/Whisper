@@ -16,9 +16,61 @@
 #include <sys/socket.h>
 #include <poll.h>
 
-using namespace std;
+int SocketAdapter::openSocket() {
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    return sock;
+}
 
-StopReason SocketAdapter::sendMessage(int sockFd, const vector<byte>& message) {
+void SocketAdapter::closeSocket(int sockFd) {
+    if (sockFd >= 0) {
+        shutdown(sockFd, SHUT_RDWR);
+        close(sockFd);
+    }
+}
+
+StopReason SocketAdapter::connectToAddress(int sockFd, const char* ip, int port) {
+    sockaddr_in server_addr;
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(port);
+
+    if (inet_pton(AF_INET, ip, &server_addr.sin_addr) <= 0) {
+        return StopReason::NetworkError;
+    }
+
+    if (connect(sockFd, (sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
+        return StopReason::NetworkError;
+    }
+    return StopReason::None;
+}
+
+StopReason SocketAdapter::listenOnSocket(int sockFd, int port, int backlog) {
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = INADDR_ANY;
+    address.sin_port = htons(port);
+
+    int opt = 1;
+    if (setsockopt(sockFd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+        return StopReason::NetworkError;
+    }
+
+    if (bind(sockFd, (sockaddr*)&address, sizeof(address)) < 0) {
+        return StopReason::NetworkError;
+    }
+
+    if (listen(sockFd, backlog) < 0) {
+        return StopReason::NetworkError;
+    }
+    return StopReason::None;
+}
+
+int SocketAdapter::acceptConnection(int sockFd) {
+    int newFd = accept(sockFd, nullptr, nullptr);
+    return newFd;
+}
+
+StopReason SocketAdapter::sendMessage(int sockFd, const std::vector<std::byte>& message) {
     size_t messageSize = message.size();
     if (messageSize > MAX_FRAME_SIZE) {
         return StopReason::ProtocolError;
@@ -50,7 +102,7 @@ StopReason SocketAdapter::sendMessage(int sockFd, const vector<byte>& message) {
 }
 
 ReceiveResult SocketAdapter::receiveMessage(int sockFd) {
-    array<byte, FRAME_LENGTH_FIELD_SIZE> frameSizeBuf = {};
+    std::array<std::byte, FRAME_LENGTH_FIELD_SIZE> frameSizeBuf = {};
 
     ssize_t n = recv(sockFd, frameSizeBuf.data(), 1, 0);
     if (n < 0) {
@@ -73,7 +125,7 @@ ReceiveResult SocketAdapter::receiveMessage(int sockFd) {
         return {StopReason::ProtocolError, {}};
     }
 
-    vector<byte> currentPayload(length);
+    std::vector<std::byte> currentPayload(length);
     result = recvExactWithTimeout(sockFd, currentPayload.data(), length);
     if (result != StopReason::None) {
         return {result, {}};
@@ -91,7 +143,7 @@ bool SocketAdapter::waitReadable(int fd) {
     return result > 0 && (pfd.revents & POLLIN);
 }
 
-StopReason SocketAdapter::recvExactWithTimeout(int fd, byte* buffer, size_t size) {
+StopReason SocketAdapter::recvExactWithTimeout(int fd, std::byte* buffer, size_t size) {
     size_t receivedBytes = 0;
     while (receivedBytes < size) {
         if (!waitReadable(fd)) {
